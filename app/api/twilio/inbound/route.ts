@@ -16,6 +16,8 @@ import { sendSms } from "@/lib/send-sms";
 export const runtime = "nodejs";
 const path = "/api/twilio/inbound";
 
+type ProcessResult = { ok: boolean; collectionUrl?: string; sessionId?: string; error?: string };
+
 function isDemoNoOutboundSms() {
   return process.env.DEMO_MODE_NO_OUTBOUND_SMS === "true";
 }
@@ -34,7 +36,7 @@ async function maybeSendSms(to: string, body: string, meta: Record<string, unkno
   await sendSms(to, body);
 }
 
-async function processInbound(params: Record<string, string>, requestId: string, messageSid: string) {
+async function processInbound(params: Record<string, string>, requestId: string, messageSid: string): Promise<ProcessResult> {
   const from = params.From || "";
   try {
     if (messageSid) {
@@ -42,7 +44,7 @@ async function processInbound(params: Record<string, string>, requestId: string,
       if (previous) {
         logEvent("duplicate_message_sid", { requestId, messageSid, collectionUrl: previous.collectionUrl });
         await maybeSendSms(from, `Your visual collection is ready: ${previous.collectionUrl}`, { requestId, messageSid, collectionUrl: previous.collectionUrl });
-        return;
+        return { ok: true, collectionUrl: previous.collectionUrl, sessionId: previous.sessionId };
       }
     }
 
@@ -53,7 +55,7 @@ async function processInbound(params: Record<string, string>, requestId: string,
     let sourceImageUrl = "";
     try {
       sourceImageUrl = await storeImage(media, params.MediaContentType0 || "image/jpeg", "source");
-      logEvent("image_stored", { requestId, messageSid, sourceImageUrl });
+      logEvent("image_stored", { requestId, messageSid, storedAsDataUrl: sourceImageUrl.startsWith("data:") });
     } catch (e) {
       logError("storage_failed", { requestId, messageSid, reason: e instanceof Error ? e.message : "unknown" });
       throw e;
@@ -85,7 +87,7 @@ async function processInbound(params: Record<string, string>, requestId: string,
         const heroUrl = await storeImage(hero.outputBuffer, hero.outputMimeType, "hero");
         const rec = await addGeneratedImage({ session_id: session.id, kind: "collection_hero", model: hero.model, prompt: hero.prompt, source_image_urls: hero.sourceImageUrls, asset_ids: hero.assetIds, openai_response_json: hero.meta, output_image_url: heroUrl });
         await updateSession(session.id, { generated_hero_image_url: heroUrl, generated_image_ids: [rec.id] });
-        logEvent("hero_generation_success", { requestId, messageSid, heroUrl });
+        logEvent("hero_generation_success", { requestId, messageSid, heroStoredAsDataUrl: heroUrl.startsWith("data:") });
       } else {
         logWarn("hero_generation_failed", { requestId, messageSid, reason: "no_output_buffer" });
       }
@@ -97,9 +99,12 @@ async function processInbound(params: Record<string, string>, requestId: string,
     logEvent("collection_ready", { requestId, messageSid, collectionUrl, demoModeNoOutboundSms: isDemoNoOutboundSms() });
     await maybeSendSms(from, `Your visual collection is ready: ${collectionUrl}`, { requestId, messageSid, collectionUrl });
     logEvent("response_sent", { requestId, messageSid, to: from, collectionUrl, skippedOutboundSms: isDemoNoOutboundSms() });
+    return { ok: true, collectionUrl, sessionId: session.id };
   } catch (e) {
-    logError("pipeline_failed", { requestId, messageSid, reason: e instanceof Error ? e.message : "unknown" });
+    const reason = e instanceof Error ? e.message : "unknown";
+    logError("pipeline_failed", { requestId, messageSid, reason });
     await maybeSendSms(from, "Sorry — we couldn’t create your collection. Please try another photo.", { requestId, messageSid, failure: true });
+    return { ok: false, error: reason };
   }
 }
 
@@ -119,6 +124,14 @@ export async function POST(req: NextRequest) {
   if (isHelpKeyword(body)) return sms("Text a photo to create an AI-generated visual collection. Reply STOP to opt out.");
   if (Number(params.NumMedia || "0") < 1 || !params.MediaUrl0) return sms("Send a photo and I’ll turn it into a visual collection.");
 
+  if (isDemoNoOutboundSms()) {
+    const result = await processInbound(params, requestId, messageSid);
+    if (result.ok && result.collectionUrl) {
+      return sms(`Collection created. URL: ${result.collectionUrl}`);
+    }
+    return sms("Collection failed. Check Vercel logs for details.");
+  }
+
   Promise.resolve().then(() => processInbound(params, requestId, messageSid));
-  return sms(isDemoNoOutboundSms() ? "Got your photo. Building your collection now. View it on the demo page shortly." : "Got your photo. Building your collection now…");
+  return sms("Got your photo. Building your collection now…");
 }
