@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import os from "node:os";
 import crypto from "node:crypto";
 import type { BrandAsset, CollectionSession, GeneratedImageRecord } from "@/types";
 
@@ -9,11 +10,19 @@ type Store = {
   brandAssets: BrandAsset[];
   processedMessages: { messageSid: string; collectionUrl: string; sessionId: string }[];
 };
-const DB_FILE = path.join(process.cwd(), "data", "local-db.json");
+
+function dbFile() {
+  // Vercel's /var/task is read-only at runtime. Use /tmp for prototype/demo persistence.
+  // This is not durable and may reset across cold starts, but it works for a live demo on a warm instance.
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    return path.join(os.tmpdir(), "textcreate-local-db.json");
+  }
+  return path.join(process.cwd(), "data", "local-db.json");
+}
 
 async function readStore(): Promise<Store> {
   try {
-    const parsed = JSON.parse(await fs.readFile(DB_FILE, "utf8"));
+    const parsed = JSON.parse(await fs.readFile(dbFile(), "utf8"));
     return {
       sessions: parsed.sessions || [],
       generatedImages: parsed.generatedImages || [],
@@ -26,8 +35,9 @@ async function readStore(): Promise<Store> {
 }
 
 async function writeStore(store: Store) {
-  await fs.mkdir(path.dirname(DB_FILE), { recursive: true });
-  await fs.writeFile(DB_FILE, JSON.stringify(store, null, 2));
+  const file = dbFile();
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify(store, null, 2));
 }
 
 export async function createSession(session: Omit<CollectionSession, "id" | "created_at" | "generated_hero_image_url" | "generated_image_ids">): Promise<CollectionSession> {
@@ -37,11 +47,36 @@ export async function createSession(session: Omit<CollectionSession, "id" | "cre
   await writeStore(store);
   return row;
 }
-export async function updateSession(id: string, patch: Partial<CollectionSession>) { const store = await readStore(); store.sessions = store.sessions.map((s) => (s.id === id ? { ...s, ...patch } : s)); await writeStore(store); }
-export async function getSession(id: string): Promise<CollectionSession | null> { const store = await readStore(); return store.sessions.find((s) => s.id === id) || null; }
-export async function addGeneratedImage(row: Omit<GeneratedImageRecord, "id" | "created_at">): Promise<GeneratedImageRecord> { const store = await readStore(); const record: GeneratedImageRecord = { ...row, id: crypto.randomUUID(), created_at: new Date().toISOString() }; store.generatedImages.push(record); await writeStore(store); return record; }
-export async function getBrandAssets(): Promise<BrandAsset[]> { const store = await readStore(); return store.brandAssets; }
-export async function setBrandAssets(assets: BrandAsset[]) { const store = await readStore(); store.brandAssets = assets; await writeStore(store); }
+
+export async function updateSession(id: string, patch: Partial<CollectionSession>) {
+  const store = await readStore();
+  store.sessions = store.sessions.map((s) => (s.id === id ? { ...s, ...patch } : s));
+  await writeStore(store);
+}
+
+export async function getSession(id: string): Promise<CollectionSession | null> {
+  const store = await readStore();
+  return store.sessions.find((s) => s.id === id) || null;
+}
+
+export async function addGeneratedImage(row: Omit<GeneratedImageRecord, "id" | "created_at">): Promise<GeneratedImageRecord> {
+  const store = await readStore();
+  const record: GeneratedImageRecord = { ...row, id: crypto.randomUUID(), created_at: new Date().toISOString() };
+  store.generatedImages.push(record);
+  await writeStore(store);
+  return record;
+}
+
+export async function getBrandAssets(): Promise<BrandAsset[]> {
+  const store = await readStore();
+  return store.brandAssets;
+}
+
+export async function setBrandAssets(assets: BrandAsset[]) {
+  const store = await readStore();
+  store.brandAssets = assets;
+  await writeStore(store);
+}
 
 export async function getProcessedMessage(messageSid: string) {
   const store = await readStore();
