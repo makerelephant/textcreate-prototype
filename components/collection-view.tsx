@@ -91,7 +91,7 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
       <div className="cp-content">
         <header className="cp-header">
           <div>
-            <h1 className="cp-h1">here is your collection 👉🏻</h1>
+            <h1 className="cp-h1">Here is your collection 👉🏻</h1>
             <p className="cp-sub">Here are a collection of product mockups containing the asset that you sent to MiM.</p>
           </div>
           <button type="button" className="cp-btn-share" onClick={shareCollection}>
