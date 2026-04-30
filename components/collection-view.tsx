@@ -1,43 +1,50 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CollectionSession } from "@/types";
+import { MOCKUP_PRODUCTS } from "@/lib/product-matching";
+import "../app/collections/[sessionId]/collections.css";
+
+type TileState = "generating" | "ready" | "failed";
 
 export default function CollectionView({ session, shareUrl }: { session: CollectionSession; shareUrl: string }) {
+  const [mockups, setMockups] = useState<Record<string, string>>(session.mockups || {});
+  const [states, setStates] = useState<Record<string, TileState>>(() => {
+    const initial: Record<string, TileState> = {};
+    for (const p of MOCKUP_PRODUCTS) {
+      initial[p.id] = session.mockups?.[p.id] ? "ready" : "generating";
+    }
+    return initial;
+  });
   const [copied, setCopied] = useState(false);
-  const [heroUrl, setHeroUrl] = useState<string | null>(session.generated_hero_image_url);
-  const [heroState, setHeroState] = useState<"idle" | "generating" | "failed">(
-    session.generated_hero_image_url ? "idle" : "generating"
-  );
-  const tags = [
-    ...session.analysis.colors,
-    ...session.analysis.style,
-    ...session.analysis.materials,
-    ...session.analysis.visual_direction.mood,
-  ].slice(0, 10);
+  const startedRef = useRef(false);
 
   useEffect(() => {
-    if (heroUrl) return;
+    if (startedRef.current) return;
+    startedRef.current = true;
+
+    const toFetch = MOCKUP_PRODUCTS.filter((p) => !mockups[p.id]);
+    if (toFetch.length === 0) return;
+
     let cancelled = false;
-    (async () => {
+    toFetch.forEach(async (product) => {
       try {
-        const res = await fetch(`/api/sessions/${session.id}/hero`, { method: "POST" });
+        const res = await fetch(`/api/sessions/${session.id}/mockups/${product.id}`, { method: "POST" });
         const data = await res.json();
         if (cancelled) return;
-        if (data.ok && data.heroUrl) {
-          setHeroUrl(data.heroUrl);
-          setHeroState("idle");
+        if (data.ok && data.mockupUrl) {
+          setMockups((prev) => ({ ...prev, [product.id]: data.mockupUrl }));
+          setStates((prev) => ({ ...prev, [product.id]: "ready" }));
         } else {
-          setHeroState("failed");
+          setStates((prev) => ({ ...prev, [product.id]: "failed" }));
         }
       } catch {
-        if (!cancelled) setHeroState("failed");
+        if (!cancelled) setStates((prev) => ({ ...prev, [product.id]: "failed" }));
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [session.id, heroUrl]);
+    });
+
+    return () => { cancelled = true; };
+  }, [session.id, mockups]);
 
   async function copyLink() {
     await navigator.clipboard.writeText(shareUrl);
@@ -45,68 +52,71 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
     setTimeout(() => setCopied(false), 1200);
   }
 
+  const STATUS_LABEL: Record<TileState, string> = {
+    generating: "Generating",
+    ready: "Ready",
+    failed: "Failed",
+  };
+
   return (
-    <main className="container">
-      <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-        <div>
-          <h1 style={{ marginBottom: 4 }}>AI-generated visual collection</h1>
-          <p style={{ marginTop: 0, color: "#555" }}>Inspired by your photo and curated into visual matches.</p>
-          <p style={{ marginTop: 4, color: "#777" }}>Prototype collection generated on {new Date(session.created_at).toLocaleString()}.</p>
-        </div>
-        <button onClick={copyLink}>{copied ? "Copied" : "Copy link"}</button>
-      </header>
+    <main className="cp-page" data-state="populated">
+      <img className="cp-brand" src="/assets/logo-mark.png" alt="In Motion" width={56} height={45} />
 
-      <section className="card" style={{ marginTop: 12 }}>
-        <p style={{ marginTop: 0 }}><strong>Share</strong>: send this link in a text message.</p>
-        <code style={{ wordBreak: "break-all" }}>{shareUrl}</code>
-      </section>
+      <div className="cp-motif" aria-hidden="true">
+        <img src="/assets/engine-background.png" alt="" />
+      </div>
 
-      <section style={{ display: "grid", gridTemplateColumns: "1fr", gap: 16, marginTop: 16 }}>
-        <article className="card">
-          <h2>Collection hero</h2>
-          {heroUrl ? (
-            <>
-              <img src={heroUrl} alt="AI generated hero" style={{ width: "100%", borderRadius: 10 }} />
-              <p>AI-generated visual inspired by your photo and real product assets.</p>
-            </>
-          ) : heroState === "generating" ? (
-            <p>Generating hero image…</p>
-          ) : (
-            <p>Hero unavailable. Showing visual matches below.</p>
-          )}
-        </article>
-        <article className="card">
-          <h2>Source inspiration image</h2>
-          <img src={session.source_image_url} alt="Source inspiration" style={{ width: "100%", borderRadius: 10 }} />
-        </article>
-      </section>
-
-      <section className="card" style={{ marginTop: 16 }}>
-        <h2>Visual direction</h2>
-        <div>{tags.length ? tags.map((t) => <span key={t} className="badge">{t}</span>) : <p>No visual tags detected.</p>}</div>
-      </section>
-
-      <section style={{ marginTop: 16 }}>
-        <h2>Collection items</h2>
-        {session.collection_items.length === 0 ? (
-          <p className="card">No visual matches found yet.</p>
-        ) : (
-          <div className="grid">
-            {session.collection_items.map((it) => (
-              <article key={it.id} className="card">
-                <img src={it.image} alt={it.title} style={{ height: 180, objectFit: "cover", borderRadius: 8, width: "100%" }} />
-                <h3>{it.title}</h3>
-                <p>{it.description}</p>
-                <p><span className="badge">{it.category}</span></p>
-                <div style={{ background: "#eee", borderRadius: 999, height: 8, overflow: "hidden" }}>
-                  <div style={{ width: `${Math.round(it.confidence_score * 100)}%`, height: "100%", background: "#4f46e5" }} />
-                </div>
-                <small>Confidence: {Math.round(it.confidence_score * 100)}%</small>
-              </article>
-            ))}
+      <div className="cp-content">
+        <header className="cp-header">
+          <div>
+            <h1 className="cp-h1">Your collection</h1>
+            <p className="cp-sub">AI-generated product mockups featuring your design.</p>
           </div>
-        )}
-      </section>
+          <button type="button" className="cp-btn cp-btn-secondary" onClick={copyLink}>
+            {copied ? "Copied" : "Copy share link"}
+          </button>
+        </header>
+
+        <section className="cp-source-row">
+          <img className="cp-source-img" src={session.source_image_url} alt="Your design" />
+          <div className="cp-source-text">
+            <span className="cp-source-label">Your design</span>
+            <span className="cp-source-share">{shareUrl}</span>
+          </div>
+        </section>
+
+        <div>
+          <h2 className="cp-section-title">Products</h2>
+          <section className="cp-grid" aria-label="Product mockups">
+            {MOCKUP_PRODUCTS.map((product, i) => {
+              const url = mockups[product.id];
+              const state = states[product.id];
+              return (
+                <article key={product.id} className="cp-tile" style={{ animationDelay: `${i * 60}ms` }}>
+                  <div
+                    className="cp-preview"
+                    style={url ? { backgroundImage: `url(${url})` } : undefined}
+                    aria-label={url ? `${product.title} mockup` : `${product.title} ${STATUS_LABEL[state]}`}
+                  >
+                    {!url && (
+                      <div className="cp-preview-status" data-state={state}>
+                        {state === "generating" && <span className="cp-spinner" aria-hidden />}
+                        <span>{STATUS_LABEL[state]}</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="cp-tile-row">
+                    <span className="cp-name" title={product.title}>{product.title}</span>
+                    <span className="cp-chip" data-status={state}>{STATUS_LABEL[state]}</span>
+                  </div>
+                </article>
+              );
+            })}
+          </section>
+        </div>
+      </div>
+
+      <footer className="cp-footer">© 2026 Made In Motion PBC</footer>
     </main>
   );
 }

@@ -41,7 +41,7 @@ export type BrandAsset = {
 export type GeneratedImageRecord = {
   id: string;
   session_id: string;
-  kind: "collection_hero";
+  kind: "collection_hero" | "product_mockup";
   model: string;
   prompt: string;
   source_image_urls: string[];
@@ -62,5 +62,6 @@ export type CollectionSession = {
   collection_url: string;
   generated_hero_image_url: string | null;
   generated_image_ids: string[];
+  mockups: Record<string, string>;
   created_at: string;
 };

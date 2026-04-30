@@ -24,6 +24,10 @@ create index if not exists collection_sessions_from_phone_created_at_idx
 create index if not exists collection_sessions_message_sid_idx
   on collection_sessions (message_sid);
 
+-- Per-session product mockup URLs, keyed by product id (e.g. {"tshirt": "https://..."}).
+alter table collection_sessions
+  add column if not exists mockups_json jsonb not null default '{}'::jsonb;
+
 -- Brand assets: short string IDs (e.g. "a-logo") so the seed data and code align.
 create table if not exists brand_assets (
   id text primary key,

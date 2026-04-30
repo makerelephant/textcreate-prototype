@@ -13,6 +13,7 @@ type SessionRow = {
   collection_url: string;
   generated_hero_image_url: string | null;
   generated_image_ids: string[];
+  mockups_json: Record<string, string> | null;
   created_at: string;
 };
 
@@ -28,12 +29,13 @@ function rowToSession(r: SessionRow): CollectionSession {
     collection_url: r.collection_url,
     generated_hero_image_url: r.generated_hero_image_url,
     generated_image_ids: r.generated_image_ids ?? [],
+    mockups: r.mockups_json ?? {},
     created_at: r.created_at,
   };
 }
 
 export async function createSession(
-  session: Omit<CollectionSession, "id" | "created_at" | "generated_hero_image_url" | "generated_image_ids">
+  session: Omit<CollectionSession, "id" | "created_at" | "generated_hero_image_url" | "generated_image_ids" | "mockups">
 ): Promise<CollectionSession> {
   const insert = {
     id: crypto.randomUUID(),
@@ -61,6 +63,7 @@ export async function updateSession(id: string, patch: Partial<CollectionSession
   if (patch.generated_image_ids !== undefined) dbPatch.generated_image_ids = patch.generated_image_ids;
   if (patch.analysis !== undefined) dbPatch.analysis_json = patch.analysis;
   if (patch.collection_items !== undefined) dbPatch.collection_items_json = patch.collection_items;
+  if (patch.mockups !== undefined) dbPatch.mockups_json = patch.mockups;
   if (Object.keys(dbPatch).length === 0) return;
   const { error } = await supabase().from("collection_sessions").update(dbPatch).eq("id", id);
   if (error) throw new Error(`update_session_failed: ${error.message}`);
