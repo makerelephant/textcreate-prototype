@@ -164,6 +164,49 @@
   word-break: break-all;
 }
 
+/* "See your design" chip button */
+.cp-chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 9999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #F2F4F7;
+  color: #475467;
+  text-decoration: none;
+  border: 1px solid #EAECF0;
+  transition: background 180ms ease, color 180ms ease, border-color 180ms ease;
+  cursor: pointer;
+  align-self: flex-start;
+  margin-top: 4px;
+}
+.cp-chip-btn:hover {
+  background: #fff;
+  border-color: #289BFF;
+  color: #289BFF;
+}
+
+/* "Spin up N more…" row */
+.cp-spinup-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 24px;
+}
+
+/* Generating status stack: spinner + label + ETA on one row */
+.cp-status-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+.cp-status-eta {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
 /* Grid */
 .cp-section-title {
   font-size: 18px;

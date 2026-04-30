@@ -58,6 +58,17 @@ export const MOCKUP_PRODUCTS: CollectionItem[] = [
     material_tags: [],
     confidence_score: 1,
   },
+  {
+    id: "cap",
+    title: "Baseball Cap",
+    image: "",
+    description: "Structured 6-panel, curved brim",
+    category: "accessories",
+    color_tags: [],
+    style_tags: [],
+    material_tags: [],
+    confidence_score: 1,
+  },
 ];
 
 export function buildCollectionItems(): CollectionItem[] {

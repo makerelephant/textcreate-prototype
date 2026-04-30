@@ -14,6 +14,8 @@ const PRODUCT_PROMPTS: Record<string, string> = {
     "Photorealistic product mockup of a natural canvas tote bag standing upright against a soft neutral background, with the provided design printed centered on the front panel. Studio lighting, premium product photography, canvas weave and reinforced handle detail visible.",
   towel:
     "Photorealistic product mockup of a folded beach towel resting on light sand, with the provided design printed across the visible folded section. Bright natural daylight, premium product photography style, soft microfiber texture visible.",
+  cap:
+    "Photorealistic product mockup of a black structured baseball cap on a soft neutral background, with the provided design embroidered on the front center panel. Studio lighting, premium product photography style, fabric weave and curved brim detail visible.",
 };
 
 export type MockupResult = {
