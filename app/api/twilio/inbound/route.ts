@@ -16,10 +16,22 @@ import { sendSms } from "@/lib/send-sms";
 export const runtime = "nodejs";
 const path = "/api/twilio/inbound";
 
+function isDemoNoOutboundSms() {
+  return process.env.DEMO_MODE_NO_OUTBOUND_SMS === "true";
+}
+
 function sms(message: string) {
   const r = new twiml.MessagingResponse();
   r.message(message);
   return new NextResponse(r.toString(), { status: 200, headers: { "Content-Type": "text/xml" } });
+}
+
+async function maybeSendSms(to: string, body: string, meta: Record<string, unknown>) {
+  if (isDemoNoOutboundSms()) {
+    logWarn("demo_mode_no_outbound_sms_skipped", { ...meta, to, body });
+    return;
+  }
+  await sendSms(to, body);
 }
 
 async function processInbound(params: Record<string, string>, requestId: string, messageSid: string) {
@@ -29,7 +41,7 @@ async function processInbound(params: Record<string, string>, requestId: string,
       const previous = await getProcessedMessage(messageSid);
       if (previous) {
         logEvent("duplicate_message_sid", { requestId, messageSid, collectionUrl: previous.collectionUrl });
-        await sendSms(from, `Your visual collection is ready: ${previous.collectionUrl}`);
+        await maybeSendSms(from, `Your visual collection is ready: ${previous.collectionUrl}`, { requestId, messageSid, collectionUrl: previous.collectionUrl });
         return;
       }
     }
@@ -82,11 +94,12 @@ async function processInbound(params: Record<string, string>, requestId: string,
     }
 
     if (messageSid) await setProcessedMessage(messageSid, collectionUrl, session.id);
-    await sendSms(from, `Your visual collection is ready: ${collectionUrl}`);
-    logEvent("response_sent", { requestId, messageSid, to: from, collectionUrl });
+    logEvent("collection_ready", { requestId, messageSid, collectionUrl, demoModeNoOutboundSms: isDemoNoOutboundSms() });
+    await maybeSendSms(from, `Your visual collection is ready: ${collectionUrl}`, { requestId, messageSid, collectionUrl });
+    logEvent("response_sent", { requestId, messageSid, to: from, collectionUrl, skippedOutboundSms: isDemoNoOutboundSms() });
   } catch (e) {
     logError("pipeline_failed", { requestId, messageSid, reason: e instanceof Error ? e.message : "unknown" });
-    await sendSms(from, "Sorry — we couldn’t create your collection. Please try another photo.");
+    await maybeSendSms(from, "Sorry — we couldn’t create your collection. Please try another photo.", { requestId, messageSid, failure: true });
   }
 }
 
@@ -97,7 +110,7 @@ export async function POST(req: NextRequest) {
   const params = Object.fromEntries(new URLSearchParams(raw).entries());
   const signature = req.headers.get("x-twilio-signature") || "";
   const messageSid = params.MessageSid || "";
-  logEvent("Twilio inbound received", { requestId, messageSid, from: params.From, numMedia: params.NumMedia, mediaUrl0: params.MediaUrl0, mediaContentType0: params.MediaContentType0 });
+  logEvent("Twilio inbound received", { requestId, messageSid, from: params.From, numMedia: params.NumMedia, mediaUrl0: params.MediaUrl0, mediaContentType0: params.MediaContentType0, demoModeNoOutboundSms: isDemoNoOutboundSms() });
 
   if (!validateTwilioSig(signature, params, path)) return new NextResponse("Invalid signature", { status: 403 });
   const body = (params.Body || "").trim();
@@ -107,5 +120,5 @@ export async function POST(req: NextRequest) {
   if (Number(params.NumMedia || "0") < 1 || !params.MediaUrl0) return sms("Send a photo and I’ll turn it into a visual collection.");
 
   Promise.resolve().then(() => processInbound(params, requestId, messageSid));
-  return sms("Got your photo. Building your collection now…");
+  return sms(isDemoNoOutboundSms() ? "Got your photo. Building your collection now. View it on the demo page shortly." : "Got your photo. Building your collection now…");
 }
