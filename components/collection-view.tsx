@@ -28,8 +28,14 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
     let cancelled = false;
     toTrigger.forEach(async (product) => {
       triggeredRef.current.add(product.id);
+      // Client-side abort cap so a hung Vercel function never leaves a tile spinning forever.
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 100_000);
       try {
-        const res = await fetch(`/api/sessions/${session.id}/mockups/${product.id}`, { method: "POST" });
+        const res = await fetch(`/api/sessions/${session.id}/mockups/${product.id}`, {
+          method: "POST",
+          signal: controller.signal,
+        });
         const data = await res.json();
         if (cancelled) return;
         if (data.ok && data.mockupUrl) {
@@ -39,6 +45,8 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
         }
       } catch {
         if (!cancelled) setFailed((prev) => new Set(prev).add(product.id));
+      } finally {
+        clearTimeout(timeout);
       }
     });
     return () => { cancelled = true; };

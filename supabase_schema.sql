@@ -28,6 +28,23 @@ create index if not exists collection_sessions_message_sid_idx
 alter table collection_sessions
   add column if not exists mockups_json jsonb not null default '{}'::jsonb;
 
+-- Atomic mockup setter — eliminates read-modify-write race when multiple
+-- mockups for the same session finish in parallel and would otherwise
+-- overwrite each other's entries.
+create or replace function set_mockup(session_id uuid, product_id text, mockup_url text)
+returns void
+language sql
+as $$
+  update collection_sessions
+  set mockups_json = jsonb_set(
+    coalesce(mockups_json, '{}'::jsonb),
+    array[product_id],
+    to_jsonb(mockup_url),
+    true
+  )
+  where id = session_id;
+$$;
+
 -- Brand assets: short string IDs (e.g. "a-logo") so the seed data and code align.
 create table if not exists brand_assets (
   id text primary key,

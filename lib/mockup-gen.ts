@@ -65,47 +65,46 @@ export async function generateProductMockup(
 
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-  // Primary path: edit the user's design into a product mockup.
+  // Edit the user's design into a product mockup. No fallback to images.generate
+  // because that path doesn't include the user's design, so it produces a generic
+  // product photo that defeats the entire purpose. Better to fail-fast and let
+  // the UI mark the tile as failed than to spend another 60s producing a useless image.
   const userFile = await urlToFile(userImageUrl);
-  if (userFile) {
-    try {
-      const edited = await client.images.edit(
-        { model, prompt, image: userFile, size: "1024x1024", quality: "medium" },
-        { timeout: 75_000 }
-      );
-      const b64 = edited?.data?.[0]?.b64_json;
-      if (b64) {
-        return {
-          productId,
-          outputBuffer: Buffer.from(b64, "base64"),
-          outputMimeType: "image/png",
-          prompt,
-          meta: { used: "images.edit" },
-        };
-      }
-      logWarn("mockup_edit_no_b64", { productId });
-    } catch (e) {
-      logWarn("mockup_edit_failed", { productId, reason: e instanceof Error ? e.message : "unknown" });
-    }
-  }
-
-  // Fallback: prompt-only generation. Won't include the user's exact design,
-  // but at least returns a representative product image.
-  try {
-    const generated = await client.images.generate(
-      { model, prompt, size: "1024x1024", quality: "medium" },
-      { timeout: 75_000 }
-    );
-    const b64 = generated?.data?.[0]?.b64_json;
+  if (!userFile) {
     return {
       productId,
-      outputBuffer: b64 ? Buffer.from(b64, "base64") : null,
+      outputBuffer: null,
       outputMimeType: "image/png",
       prompt,
-      meta: { used: "images.generate_fallback" },
+      meta: { error: "user_file_unavailable" },
+    };
+  }
+
+  try {
+    const edited = await client.images.edit(
+      { model, prompt, image: userFile, size: "1024x1024", quality: "medium" },
+      { timeout: 60_000 }
+    );
+    const b64 = edited?.data?.[0]?.b64_json;
+    if (b64) {
+      return {
+        productId,
+        outputBuffer: Buffer.from(b64, "base64"),
+        outputMimeType: "image/png",
+        prompt,
+        meta: { used: "images.edit" },
+      };
+    }
+    logWarn("mockup_edit_no_b64", { productId });
+    return {
+      productId,
+      outputBuffer: null,
+      outputMimeType: "image/png",
+      prompt,
+      meta: { error: "no_b64_in_response" },
     };
   } catch (e) {
-    logWarn("mockup_generate_failed", { productId, reason: e instanceof Error ? e.message : "unknown" });
+    logWarn("mockup_edit_failed", { productId, reason: e instanceof Error ? e.message : "unknown" });
     return {
       productId,
       outputBuffer: null,

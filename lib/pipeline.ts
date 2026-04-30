@@ -7,6 +7,7 @@ import { generateProductMockup } from "./mockup-gen";
 import { analyzeImage } from "./openai";
 import { buildCollectionItems } from "./product-matching";
 import { storeImage } from "./storage";
+import { supabase } from "./supabase";
 
 type CreateParams = {
   sourceImageUrl: string;
@@ -90,7 +91,13 @@ export async function generateMockupForSession(sessionId: string, productId: str
     output_image_url: mockupUrl,
   });
 
-  const updatedMockups = { ...session.mockups, [productId]: mockupUrl };
-  await updateSession(session.id, { mockups: updatedMockups });
+  // Atomic write via Postgres function — avoids read-modify-write race
+  // when multiple mockups for the same session finish in parallel.
+  const { error } = await supabase().rpc("set_mockup", {
+    session_id: session.id,
+    product_id: productId,
+    mockup_url: mockupUrl,
+  });
+  if (error) throw new Error(`set_mockup_rpc_failed: ${error.message}`);
   return { ok: true, mockupUrl };
 }
