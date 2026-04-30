@@ -15,7 +15,7 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
   const [mockups, setMockups] = useState<Record<string, string>>(initialMockups);
   const [failed, setFailed] = useState<Set<string>>(new Set());
   const [visibleCount, setVisibleCount] = useState(INITIAL_BATCH);
-  const [copied, setCopied] = useState(false);
+  const [shareLabel, setShareLabel] = useState<"Share your Collection" | "Link copied" | "Shared">("Share your Collection");
   const triggeredRef = useRef<Set<string>>(new Set(Object.keys(initialMockups)));
 
   useEffect(() => {
@@ -50,10 +50,25 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
     return "generating";
   }
 
-  async function copyLink() {
+  async function shareCollection() {
+    const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
+    if (typeof nav.share === "function") {
+      try {
+        await nav.share({
+          title: "My In Motion collection",
+          text: "Here's my collection of product mockups",
+          url: shareUrl,
+        });
+        setShareLabel("Shared");
+        setTimeout(() => setShareLabel("Share your Collection"), 1500);
+        return;
+      } catch {
+        // User cancelled or share failed — fall through to clipboard.
+      }
+    }
     await navigator.clipboard.writeText(shareUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1200);
+    setShareLabel("Link copied");
+    setTimeout(() => setShareLabel("Share your Collection"), 1500);
   }
 
   const STATUS_LABEL: Record<TileState, string> = {
@@ -79,9 +94,6 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
             <h1 className="cp-h1">here is your collection 👉🏻</h1>
             <p className="cp-sub">Here are a collection of product mockups containing the asset that you sent to MiM.</p>
           </div>
-          <button type="button" className="cp-btn cp-btn-secondary" onClick={copyLink}>
-            {copied ? "Copied" : "Copy share link"}
-          </button>
         </header>
 
         <section className="cp-source-row">
@@ -98,6 +110,11 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
             </a>
           </div>
         </section>
+
+        <button type="button" className="cp-btn-share" onClick={shareCollection}>
+          <IconShare aria-hidden />
+          <span>{shareLabel}</span>
+        </button>
 
         <div>
           <h2 className="cp-section-title">Products</h2>
@@ -153,5 +170,23 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
 
       <footer className="cp-footer">© 2026 Made In Motion PBC</footer>
     </main>
+  );
+}
+
+function IconShare(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      {...props}
+    >
+      <path d="M15 3h6v6" />
+      <path d="M10 14L21 3" />
+      <path d="M19 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6" />
+    </svg>
   );
 }
