@@ -8,7 +8,9 @@ function maskPhone(phone: string) {
 }
 
 export async function GET() {
-  if (process.env.NODE_ENV === "production") {
+  // Allow in production if demo mode is enabled
+  const allowInProd = process.env.DEMO_MODE_NO_OUTBOUND_SMS === "true";
+  if (process.env.NODE_ENV === "production" && !allowInProd) {
     return NextResponse.json({ error: "Not available in production" }, { status: 404 });
   }
   const sessions = await listRecentSessions(25);
