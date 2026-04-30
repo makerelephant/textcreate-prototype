@@ -1,97 +1,159 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import os from "node:os";
 import crypto from "node:crypto";
-import type { BrandAsset, CollectionSession, GeneratedImageRecord } from "@/types";
+import type { BrandAsset, CollectionSession, GeneratedImageRecord, ImageAnalysis, CollectionItem } from "@/types";
+import { supabase } from "./supabase";
 
-type Store = {
-  sessions: CollectionSession[];
-  generatedImages: GeneratedImageRecord[];
-  brandAssets: BrandAsset[];
-  processedMessages: { messageSid: string; collectionUrl: string; sessionId: string }[];
+type SessionRow = {
+  id: string;
+  from_phone: string;
+  message_sid: string | null;
+  source_twilio_media_url: string | null;
+  source_image_url: string;
+  analysis_json: ImageAnalysis;
+  collection_items_json: CollectionItem[];
+  collection_url: string;
+  generated_hero_image_url: string | null;
+  generated_image_ids: string[];
+  created_at: string;
 };
 
-function dbFile() {
-  // Vercel's /var/task is read-only at runtime. Use /tmp for prototype/demo persistence.
-  // This is not durable and may reset across cold starts, but it works for a live demo on a warm instance.
-  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
-    return path.join(os.tmpdir(), "textcreate-local-db.json");
-  }
-  return path.join(process.cwd(), "data", "local-db.json");
+function rowToSession(r: SessionRow): CollectionSession {
+  return {
+    id: r.id,
+    from_phone: r.from_phone,
+    message_sid: r.message_sid,
+    source_twilio_media_url: r.source_twilio_media_url,
+    source_image_url: r.source_image_url,
+    analysis: r.analysis_json,
+    collection_items: r.collection_items_json,
+    collection_url: r.collection_url,
+    generated_hero_image_url: r.generated_hero_image_url,
+    generated_image_ids: r.generated_image_ids ?? [],
+    created_at: r.created_at,
+  };
 }
 
-async function readStore(): Promise<Store> {
-  try {
-    const parsed = JSON.parse(await fs.readFile(dbFile(), "utf8"));
-    return {
-      sessions: parsed.sessions || [],
-      generatedImages: parsed.generatedImages || [],
-      brandAssets: parsed.brandAssets || [],
-      processedMessages: parsed.processedMessages || [],
-    };
-  } catch {
-    return { sessions: [], generatedImages: [], brandAssets: [], processedMessages: [] };
-  }
+export async function createSession(
+  session: Omit<CollectionSession, "id" | "created_at" | "generated_hero_image_url" | "generated_image_ids">
+): Promise<CollectionSession> {
+  const insert = {
+    id: crypto.randomUUID(),
+    from_phone: session.from_phone,
+    message_sid: session.message_sid ?? null,
+    source_twilio_media_url: session.source_twilio_media_url,
+    source_image_url: session.source_image_url,
+    analysis_json: session.analysis,
+    collection_items_json: session.collection_items,
+    collection_url: session.collection_url || "",
+  };
+  const { data, error } = await supabase()
+    .from("collection_sessions")
+    .insert(insert)
+    .select()
+    .single();
+  if (error) throw new Error(`create_session_failed: ${error.message}`);
+  return rowToSession(data as SessionRow);
 }
 
-async function writeStore(store: Store) {
-  const file = dbFile();
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, JSON.stringify(store, null, 2));
-}
-
-export async function createSession(session: Omit<CollectionSession, "id" | "created_at" | "generated_hero_image_url" | "generated_image_ids">): Promise<CollectionSession> {
-  const store = await readStore();
-  const row: CollectionSession = { ...session, id: crypto.randomUUID(), created_at: new Date().toISOString(), generated_hero_image_url: null, generated_image_ids: [] };
-  store.sessions.push(row);
-  await writeStore(store);
-  return row;
-}
-
-export async function updateSession(id: string, patch: Partial<CollectionSession>) {
-  const store = await readStore();
-  store.sessions = store.sessions.map((s) => (s.id === id ? { ...s, ...patch } : s));
-  await writeStore(store);
+export async function updateSession(id: string, patch: Partial<CollectionSession>): Promise<void> {
+  const dbPatch: Record<string, unknown> = {};
+  if (patch.collection_url !== undefined) dbPatch.collection_url = patch.collection_url;
+  if (patch.generated_hero_image_url !== undefined) dbPatch.generated_hero_image_url = patch.generated_hero_image_url;
+  if (patch.generated_image_ids !== undefined) dbPatch.generated_image_ids = patch.generated_image_ids;
+  if (patch.analysis !== undefined) dbPatch.analysis_json = patch.analysis;
+  if (patch.collection_items !== undefined) dbPatch.collection_items_json = patch.collection_items;
+  if (Object.keys(dbPatch).length === 0) return;
+  const { error } = await supabase().from("collection_sessions").update(dbPatch).eq("id", id);
+  if (error) throw new Error(`update_session_failed: ${error.message}`);
 }
 
 export async function getSession(id: string): Promise<CollectionSession | null> {
-  const store = await readStore();
-  return store.sessions.find((s) => s.id === id) || null;
+  const { data, error } = await supabase()
+    .from("collection_sessions")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(`get_session_failed: ${error.message}`);
+  if (!data) return null;
+  return rowToSession(data as SessionRow);
 }
 
-export async function addGeneratedImage(row: Omit<GeneratedImageRecord, "id" | "created_at">): Promise<GeneratedImageRecord> {
-  const store = await readStore();
-  const record: GeneratedImageRecord = { ...row, id: crypto.randomUUID(), created_at: new Date().toISOString() };
-  store.generatedImages.push(record);
-  await writeStore(store);
-  return record;
+export async function listRecentSessions(limit = 20): Promise<CollectionSession[]> {
+  const { data, error } = await supabase()
+    .from("collection_sessions")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(`list_sessions_failed: ${error.message}`);
+  return (data as SessionRow[]).map(rowToSession);
+}
+
+export async function addGeneratedImage(
+  row: Omit<GeneratedImageRecord, "id" | "created_at">
+): Promise<GeneratedImageRecord> {
+  const insert = {
+    id: crypto.randomUUID(),
+    session_id: row.session_id,
+    kind: row.kind,
+    model: row.model,
+    prompt: row.prompt,
+    source_image_urls: row.source_image_urls,
+    asset_ids: row.asset_ids,
+    openai_response_json: row.openai_response_json,
+    output_image_url: row.output_image_url,
+  };
+  const { data, error } = await supabase()
+    .from("generated_images")
+    .insert(insert)
+    .select()
+    .single();
+  if (error) throw new Error(`add_generated_image_failed: ${error.message}`);
+  return data as GeneratedImageRecord;
 }
 
 export async function getBrandAssets(): Promise<BrandAsset[]> {
-  const store = await readStore();
-  return store.brandAssets;
+  const { data, error } = await supabase().from("brand_assets").select("*");
+  if (error) throw new Error(`get_brand_assets_failed: ${error.message}`);
+  return (data ?? []).map((r: { id: string; asset_type: BrandAsset["asset_type"]; item_id: string | null; label: string; stored_url: string }) => ({
+    id: r.id,
+    asset_type: r.asset_type,
+    item_id: r.item_id,
+    label: r.label,
+    stored_url: r.stored_url,
+  }));
 }
 
-export async function setBrandAssets(assets: BrandAsset[]) {
-  const store = await readStore();
-  store.brandAssets = assets;
-  await writeStore(store);
+export async function setBrandAssets(assets: BrandAsset[]): Promise<void> {
+  if (assets.length === 0) return;
+  const rows = assets.map((a) => ({
+    id: a.id,
+    asset_type: a.asset_type,
+    item_id: a.item_id,
+    label: a.label,
+    stored_url: a.stored_url,
+  }));
+  const { error } = await supabase()
+    .from("brand_assets")
+    .upsert(rows, { onConflict: "id" });
+  if (error) throw new Error(`set_brand_assets_failed: ${error.message}`);
 }
 
 export async function getProcessedMessage(messageSid: string) {
-  const store = await readStore();
-  return store.processedMessages.find((m) => m.messageSid === messageSid) || null;
+  const { data, error } = await supabase()
+    .from("processed_messages")
+    .select("*")
+    .eq("message_sid", messageSid)
+    .maybeSingle();
+  if (error) throw new Error(`get_processed_message_failed: ${error.message}`);
+  if (!data) return null;
+  return { messageSid: data.message_sid, collectionUrl: data.collection_url, sessionId: data.session_id };
 }
 
 export async function setProcessedMessage(messageSid: string, collectionUrl: string, sessionId: string) {
-  const store = await readStore();
-  if (!store.processedMessages.find((m) => m.messageSid === messageSid)) {
-    store.processedMessages.push({ messageSid, collectionUrl, sessionId });
-    await writeStore(store);
-  }
-}
-
-export async function listRecentSessions(limit = 20) {
-  const store = await readStore();
-  return [...store.sessions].sort((a, b) => (a.created_at < b.created_at ? 1 : -1)).slice(0, limit);
+  const { error } = await supabase()
+    .from("processed_messages")
+    .upsert(
+      { message_sid: messageSid, collection_url: collectionUrl, session_id: sessionId },
+      { onConflict: "message_sid", ignoreDuplicates: true }
+    );
+  if (error) throw new Error(`set_processed_message_failed: ${error.message}`);
 }
