@@ -1,0 +1,1 @@
+export default function Home() { return <main className="container"><h1>Visual Collection Prototype</h1><p>Send an MMS image to your Twilio number to receive a view-only collection link.</p></main>; }
