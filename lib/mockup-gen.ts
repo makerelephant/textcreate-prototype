@@ -70,7 +70,7 @@ export async function generateProductMockup(
   if (userFile) {
     try {
       const edited = await client.images.edit(
-        { model, prompt, image: userFile, size: "1024x1024" },
+        { model, prompt, image: userFile, size: "1024x1024", quality: "medium" },
         { timeout: 75_000 }
       );
       const b64 = edited?.data?.[0]?.b64_json;
@@ -93,7 +93,7 @@ export async function generateProductMockup(
   // but at least returns a representative product image.
   try {
     const generated = await client.images.generate(
-      { model, prompt, size: "1024x1024" },
+      { model, prompt, size: "1024x1024", quality: "medium" },
       { timeout: 75_000 }
     );
     const b64 = generated?.data?.[0]?.b64_json;

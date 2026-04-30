@@ -94,6 +94,10 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
             <h1 className="cp-h1">here is your collection 👉🏻</h1>
             <p className="cp-sub">Here are a collection of product mockups containing the asset that you sent to MiM.</p>
           </div>
+          <button type="button" className="cp-btn-share" onClick={shareCollection}>
+            <IconShare aria-hidden />
+            <span>{shareLabel}</span>
+          </button>
         </header>
 
         <section className="cp-source-row">
@@ -110,11 +114,6 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
             </a>
           </div>
         </section>
-
-        <button type="button" className="cp-btn-share" onClick={shareCollection}>
-          <IconShare aria-hidden />
-          <span>{shareLabel}</span>
-        </button>
 
         <div>
           <h2 className="cp-section-title">Products</h2>
