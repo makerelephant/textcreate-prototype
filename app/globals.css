@@ -1,0 +1,5 @@
+*{box-sizing:border-box} body{font-family:Arial,sans-serif;margin:0;background:#fafafa;color:#111} .container{max-width:1000px;margin:0 auto;padding:24px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px}
+.card{border:1px solid #e6e6e6;background:#fff;padding:12px;border-radius:10px}
+img{max-width:100%}
+.badge{display:inline-block;background:#efefef;padding:2px 8px;border-radius:999px;font-size:12px;margin-right:6px}
