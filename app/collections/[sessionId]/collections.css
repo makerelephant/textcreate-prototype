@@ -17,7 +17,7 @@
   position: absolute;
   top: 36px;
   left: 56px;
-  width: 180px;
+  width: 300px;
   height: auto;
   user-select: none;
   pointer-events: none;
@@ -416,7 +416,7 @@
 .cp-chip[data-status="failed"]     { background: #FFF4E0; color: #B5760E; }
 
 @media (max-width: 720px) {
-  .cp-brand { top: 20px; left: 24px; width: 130px; }
+  .cp-brand { top: 20px; left: 24px; width: 160px; }
   .cp-footer { padding: 24px; }
   .cp-content { padding: 96px 24px 24px; gap: 24px; }
   .cp-h1 { font-size: 22px; }
