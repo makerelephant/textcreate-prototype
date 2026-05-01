@@ -163,7 +163,18 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
               const url = mockups[product.id];
               const state = stateFor(product.id);
               return (
-                <article key={product.id} className="cp-tile" style={{ animationDelay: `${i * 60}ms` }}>
+                <article key={product.id} className="cp-tile" data-first={i === 0 ? "true" : undefined} style={{ animationDelay: `${i * 60}ms` }}>
+                  {i === 0 && (
+                    <video
+                      className="cp-mascot"
+                      src="/loosh-worming%20copy.webm"
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      aria-hidden
+                    />
+                  )}
                   <div
                     className="cp-preview"
                     style={url ? { backgroundImage: `url(${url})` } : undefined}

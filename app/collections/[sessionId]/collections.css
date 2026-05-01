@@ -291,8 +291,30 @@
   gap: 16px;
 }
 
+/* Mascot — peeks out from behind the top-right of the first tile.
+   Sized so ~half is hidden by the tile body, the other half visible above. */
+.cp-mascot {
+  position: absolute;
+  bottom: calc(100% - 70px); /* 70 px overlap with the tile (hidden), rest sticks up */
+  right: 8px;
+  width: 140px;
+  height: 140px;
+  object-fit: contain;
+  z-index: 0;
+  pointer-events: none;
+  user-select: none;
+}
+@media (max-width: 720px) {
+  .cp-mascot {
+    width: 100px;
+    height: 100px;
+    bottom: calc(100% - 50px);
+  }
+}
+
 /* Tile */
 .cp-tile {
+  position: relative;
   background: #fff;
   border: 1px solid #EAECF0;
   border-radius: 12px;
@@ -318,6 +340,8 @@
 }
 
 .cp-preview {
+  position: relative;
+  z-index: 1;
   aspect-ratio: 1 / 1;
   border-radius: 8px;
   background:
@@ -331,6 +355,7 @@
 .cp-preview-status {
   position: absolute;
   inset: 0;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
