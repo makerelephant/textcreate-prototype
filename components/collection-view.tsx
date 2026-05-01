@@ -142,7 +142,7 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
 
   return (
     <main className="cp-page" data-state="populated">
-      <img className="cp-brand" src="/assets/logo-mark.png" alt="In Motion" width={56} height={45} />
+      <img className="cp-brand" src="/Made%20in%20Motion%20Create.png" alt="Made in Motion Create" />
 
       <div className="cp-motif" aria-hidden="true">
         <img src="/assets/engine-background.png" alt="" />
