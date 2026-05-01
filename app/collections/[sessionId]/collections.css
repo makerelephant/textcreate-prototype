@@ -292,23 +292,25 @@
 }
 
 /* Mascot — peeks out from behind the top-right of the first tile.
-   Sized so ~half is hidden by the tile body, the other half visible above. */
+   z-index: -1 places it behind the tile's white background AND behind the
+   image preview, so only the portion that extends above the tile body is
+   visible. (Requires the tile to NOT create a stacking context.) */
 .cp-mascot {
   position: absolute;
-  bottom: calc(100% - 70px); /* 70 px overlap with the tile (hidden), rest sticks up */
+  bottom: calc(100% - 35px); /* 35 px overlap with the tile (hidden), 35 px sticks up */
   right: 8px;
-  width: 140px;
-  height: 140px;
+  width: 70px;
+  height: 70px;
   object-fit: contain;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
   user-select: none;
 }
 @media (max-width: 720px) {
   .cp-mascot {
-    width: 100px;
-    height: 100px;
-    bottom: calc(100% - 50px);
+    width: 50px;
+    height: 50px;
+    bottom: calc(100% - 25px);
   }
 }
 
