@@ -237,6 +237,44 @@
 .cp-status-eta {
   font-size: 11px;
   opacity: 0.7;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Learn more about the product scoring model — placeholder action link */
+.cp-learn-more {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #289BFF;
+  text-decoration: none;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: color 180ms ease, transform 180ms ease;
+}
+.cp-learn-more svg {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  transition: transform 180ms ease;
+}
+.cp-learn-more:hover {
+  color: #1873DE;
+}
+.cp-learn-more:hover svg {
+  transform: translateX(4px);
+}
+@media (max-width: 720px) {
+  .cp-learn-more {
+    font-size: 17px;
+    gap: 8px;
+  }
+  .cp-learn-more svg {
+    width: 18px;
+    height: 18px;
+  }
 }
 
 /* Grid */

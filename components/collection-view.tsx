@@ -7,6 +7,9 @@ import "../app/collections/[sessionId]/collections.css";
 
 const INITIAL_BATCH = 3;
 const BATCH_SIZE = 3;
+const ETA_SECONDS = 25;
+const POLL_INTERVAL_MS = 5000;
+const CLIENT_TIMEOUT_MS = 100_000;
 
 type TileState = "generating" | "ready" | "failed";
 
@@ -15,9 +18,12 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
   const [mockups, setMockups] = useState<Record<string, string>>(initialMockups);
   const [failed, setFailed] = useState<Set<string>>(new Set());
   const [visibleCount, setVisibleCount] = useState(INITIAL_BATCH);
-  const [shareLabel, setShareLabel] = useState<"Share your Collection" | "Link copied" | "Shared">("Share your Collection");
+  const [shareLabel, setShareLabel] = useState<"Share Your Collection" | "Link copied" | "Shared">("Share Your Collection");
+  const [now, setNow] = useState(Date.now());
   const triggeredRef = useRef<Set<string>>(new Set(Object.keys(initialMockups)));
+  const triggerTimesRef = useRef<Record<string, number>>({});
 
+  // Trigger generation for newly-visible products that haven't been started yet.
   useEffect(() => {
     const visible = MOCKUP_PRODUCTS.slice(0, visibleCount);
     const toTrigger = visible.filter(
@@ -28,9 +34,9 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
     let cancelled = false;
     toTrigger.forEach(async (product) => {
       triggeredRef.current.add(product.id);
-      // Client-side abort cap so a hung Vercel function never leaves a tile spinning forever.
+      triggerTimesRef.current[product.id] = Date.now();
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 100_000);
+      const timeout = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
       try {
         const res = await fetch(`/api/sessions/${session.id}/mockups/${product.id}`, {
           method: "POST",
@@ -44,7 +50,8 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
           setFailed((prev) => new Set(prev).add(product.id));
         }
       } catch {
-        if (!cancelled) setFailed((prev) => new Set(prev).add(product.id));
+        // Don't mark failed yet — polling may still recover the URL if the
+        // mockup did persist server-side before the function was killed.
       } finally {
         clearTimeout(timeout);
       }
@@ -52,10 +59,51 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
     return () => { cancelled = true; };
   }, [session.id, visibleCount, mockups]);
 
+  // Tick the clock every second so countdown ETAs re-render. Stops itself
+  // when no tile is still generating.
+  useEffect(() => {
+    const stillGenerating = MOCKUP_PRODUCTS.slice(0, visibleCount).some((p) =>
+      !mockups[p.id] && !failed.has(p.id)
+    );
+    if (!stillGenerating) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [visibleCount, mockups, failed]);
+
+  // Poll the server for mockup updates — recovers from lost request responses.
+  useEffect(() => {
+    const stillGenerating = MOCKUP_PRODUCTS.slice(0, visibleCount).some((p) =>
+      !mockups[p.id] && !failed.has(p.id)
+    );
+    if (!stillGenerating) return;
+    const id = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/sessions/${session.id}/mockups`);
+        const data = await res.json();
+        if (data.ok && data.mockups) {
+          setMockups((prev) => ({ ...prev, ...data.mockups }));
+        }
+      } catch {
+        // Silent — next tick will retry.
+      }
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [session.id, visibleCount, mockups, failed]);
+
   function stateFor(productId: string): TileState {
     if (mockups[productId]) return "ready";
     if (failed.has(productId)) return "failed";
     return "generating";
+  }
+
+  function etaFor(productId: string): string {
+    const triggeredAt = triggerTimesRef.current[productId];
+    if (!triggeredAt) return `~${ETA_SECONDS}s`;
+    const elapsed = Math.floor((now - triggeredAt) / 1000);
+    const remaining = ETA_SECONDS - elapsed;
+    if (remaining > 5) return `~${remaining}s`;
+    if (remaining > 0) return `Finishing…`;
+    return `Almost there…`;
   }
 
   async function shareCollection() {
@@ -68,15 +116,15 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
           url: shareUrl,
         });
         setShareLabel("Shared");
-        setTimeout(() => setShareLabel("Share your Collection"), 1500);
+        setTimeout(() => setShareLabel("Share Your Collection"), 1500);
         return;
       } catch {
-        // User cancelled or share failed — fall through to clipboard.
+        // User cancelled or share unsupported — fall through to clipboard.
       }
     }
     await navigator.clipboard.writeText(shareUrl);
     setShareLabel("Link copied");
-    setTimeout(() => setShareLabel("Share your Collection"), 1500);
+    setTimeout(() => setShareLabel("Share Your Collection"), 1500);
   }
 
   const STATUS_LABEL: Record<TileState, string> = {
@@ -99,29 +147,14 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
       <div className="cp-content">
         <header className="cp-header">
           <div>
-            <h1 className="cp-h1">Here is your collection 👉🏻</h1>
-            <p className="cp-sub">Here are a collection of product mockups containing the asset that you sent to MiM.</p>
+            <h1 className="cp-h1">Your Collection is Ready ✌️👇🏻</h1>
+            <p className="cp-sub">Our recommendations pair your asset with products we think visually fit while achieving the highest paired production quality.</p>
           </div>
           <button type="button" className="cp-btn-share" onClick={shareCollection}>
             <IconShare aria-hidden />
             <span>{shareLabel}</span>
           </button>
         </header>
-
-        <section className="cp-source-row">
-          <img className="cp-source-img" src={session.source_image_url} alt="Your design" />
-          <div className="cp-source-text">
-            <span className="cp-source-label">Your design</span>
-            <a
-              className="cp-chip-btn"
-              href={session.source_image_url}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              See your design
-            </a>
-          </div>
-        </section>
 
         <div>
           <h2 className="cp-section-title">Products</h2>
@@ -143,7 +176,7 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
                             <span className="cp-spinner" aria-hidden />
                             <div className="cp-status-stack">
                               <span>Generating</span>
-                              <span className="cp-status-eta">~30 sec</span>
+                              <span className="cp-status-eta">{etaFor(product.id)}</span>
                             </div>
                           </>
                         ) : (
@@ -173,6 +206,25 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
             </div>
           )}
         </div>
+
+        <section className="cp-source-row">
+          <img className="cp-source-img" src={session.source_image_url} alt="Your design" />
+          <div className="cp-source-text">
+            <a
+              className="cp-chip-btn"
+              href={session.source_image_url}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              View Your Design
+            </a>
+          </div>
+        </section>
+
+        <a className="cp-learn-more" href="#" onClick={(e) => e.preventDefault()}>
+          <span>Learn more about our product scoring model</span>
+          <IconArrowRight aria-hidden />
+        </a>
       </div>
 
       <footer className="cp-footer">© 2026 Made In Motion PBC</footer>
@@ -182,18 +234,19 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
 
 function IconShare(props: React.SVGProps<SVGSVGElement>) {
   return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
       <path d="M15 3h6v6" />
       <path d="M10 14L21 3" />
       <path d="M19 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h6" />
+    </svg>
+  );
+}
+
+function IconArrowRight(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M5 12h14" />
+      <path d="M12 5l7 7-7 7" />
     </svg>
   );
 }
