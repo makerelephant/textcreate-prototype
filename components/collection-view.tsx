@@ -22,8 +22,15 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
   const [now, setNow] = useState(Date.now());
   const triggeredRef = useRef<Set<string>>(new Set(Object.keys(initialMockups)));
   const triggerTimesRef = useRef<Record<string, number>>({});
+  const unmountedRef = useRef(false);
+  useEffect(() => () => { unmountedRef.current = true; }, []);
 
   // Trigger generation for newly-visible products that haven't been started yet.
+  // NOTE: we deliberately do NOT use a per-effect `cancelled` flag here.
+  // The dep array re-runs this effect on every mockups update, and a
+  // per-effect flag would incorrectly discard responses from fetches that
+  // were started in an earlier run but completed after a re-render. Use
+  // unmountedRef (component-lifetime) instead — that only fires on true unmount.
   useEffect(() => {
     const visible = MOCKUP_PRODUCTS.slice(0, visibleCount);
     const toTrigger = visible.filter(
@@ -31,7 +38,6 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
     );
     if (toTrigger.length === 0) return;
 
-    let cancelled = false;
     toTrigger.forEach(async (product) => {
       triggeredRef.current.add(product.id);
       triggerTimesRef.current[product.id] = Date.now();
@@ -43,20 +49,18 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
           signal: controller.signal,
         });
         const data = await res.json();
-        if (cancelled) return;
+        if (unmountedRef.current) return;
         if (data.ok && data.mockupUrl) {
           setMockups((prev) => ({ ...prev, [product.id]: data.mockupUrl }));
         } else {
           setFailed((prev) => new Set(prev).add(product.id));
         }
       } catch {
-        // Don't mark failed yet — polling may still recover the URL if the
-        // mockup did persist server-side before the function was killed.
+        // Polling will recover the URL if it did persist server-side.
       } finally {
         clearTimeout(timeout);
       }
     });
-    return () => { cancelled = true; };
   }, [session.id, visibleCount, mockups]);
 
   // Tick the clock every second so countdown ETAs re-render. Stops itself

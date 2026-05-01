@@ -82,7 +82,7 @@ export async function generateProductMockup(
 
   try {
     const edited = await client.images.edit(
-      { model, prompt, image: userFile, size: "1024x1024", quality: "medium" },
+      { model, prompt, image: userFile, size: "1024x1024", quality: "low" },
       { timeout: 60_000 }
     );
     const b64 = edited?.data?.[0]?.b64_json;
