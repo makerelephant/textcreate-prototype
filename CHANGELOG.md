@@ -209,6 +209,126 @@ If a column appears missing in production after a code change, ask the user to r
 
 ---
 
+## Additional work since the first changelog entry
+
+### Reliability + race fixes
+- **Postgres `set_mockup` RPC** — atomic jsonb_set replaces the read-modify-write
+  pattern that was losing mockups when multiple finished in parallel. Eliminated
+  the "different tiles after each refresh" symptom. ([f66b731](https://github.com/makerelephant/textcreate-prototype/commit/f66b731))
+- **Dropped the `images.generate` fallback** in `lib/mockup-gen.ts`. The fallback
+  produced generic product photos without the user's design, and its 75 s timeout
+  inside the 90 s function envelope was the cause of "tile spins forever" — the
+  function would get killed mid-fallback. ([f66b731](https://github.com/makerelephant/textcreate-prototype/commit/f66b731))
+- **Reduced OpenAI timeout to 60 s** so it always returns inside Vercel's 90 s window.
+- **Client-side 100 s AbortController** so dead requests give up cleanly.
+- **Stale-effect cancellation bug** — the *real* root cause of "two tiles stuck
+  generating until hard refresh". The trigger effect's `cancelled` closure was tied
+  to effect lifetime, not component lifetime, so the cleanup that fired on every
+  `mockups` update (because `mockups` was in the dep array) silently discarded the
+  in-flight responses for the 2nd and 3rd parallel mockups. Fixed by switching to
+  a component-lifetime `unmountedRef`. ([3979fa6](https://github.com/makerelephant/textcreate-prototype/commit/3979fa6))
+- **Polling endpoint** `GET /api/sessions/[id]/mockups` returns the current mockup
+  map; client polls every 5 s while any tile is still generating. Acts as a safety
+  net for any genuinely-lost responses. ([8de584f](https://github.com/makerelephant/textcreate-prototype/commit/8de584f))
+
+### Speed
+- **`quality: "low"`** on `gpt-image-1` calls — drops mockup latency from
+  15-25 s (medium) to 8-15 s. Image fidelity reduces noticeably but the demo is
+  usable for the first time. Toggleable via `OPENAI_IMAGE_MODEL` / future quality env.
+  ([3979fa6](https://github.com/makerelephant/textcreate-prototype/commit/3979fa6))
+- **Initial batch = 3** with on-demand "Spin up 3 more…" button reveals the
+  remaining 3 (now total 6: tshirt, hoodie, mug, tote, towel, cap). Cuts initial
+  page load to 3 OpenAI calls. ([7da4472](https://github.com/makerelephant/textcreate-prototype/commit/7da4472))
+
+### UI / design system
+- Title "Your Collection is Ready ✌️👇🏻" + subtitle "Our recommendations pair your
+  asset…" ([8de584f](https://github.com/makerelephant/textcreate-prototype/commit/8de584f), capitalised in [0bfa33c](https://github.com/makerelephant/textcreate-prototype/commit/0bfa33c))
+- **Header restructured** to a single left-aligned column: H1, subtitle, then a
+  small "Share Your Collection" chip-button below. (Previous layout had the share
+  button right-aligned in the header — moved per design ref.)
+- **Share button** uses native `navigator.share()` with clipboard fallback. Sized
+  to design system: Geist 14 px / 500, 6 × 18 px padding, 8 px radius, 14 px icon. ([520ae68](https://github.com/makerelephant/textcreate-prototype/commit/520ae68), [f3e1962](https://github.com/makerelephant/textcreate-prototype/commit/f3e1962))
+- **Source-design card moved** to BELOW the products grid + Spin up button, hugs
+  its content rather than stretching full width (`width: fit-content`-style via
+  `inline-flex`/`align-self`), 8 × 12 px padding. Removed the "YOUR DESIGN"
+  redundant label. Chip text changed to "View Your Design".
+- **"Learn more about our product scoring model →"** placeholder link below the
+  source card. Geist 14 px / 600 (sized down from the screenshot to match the
+  design system per follow-up). ([916ea01](https://github.com/makerelephant/textcreate-prototype/commit/916ea01))
+- **"Products" h2 above the grid removed** ([916ea01](https://github.com/makerelephant/textcreate-prototype/commit/916ea01)).
+- **Live ETA countdown** in generating tiles: starts at ~25 s, ticks down each
+  second, switches to "Finishing…" near zero, then "Almost there…" if it overruns.
+  Replaces the static "~30 sec" label. ([8de584f](https://github.com/makerelephant/textcreate-prototype/commit/8de584f))
+
+### Branding + assets
+- **Header logo** replaced from the engine-mark icon with the
+  `Made in Motion Create.png` wordmark. 300 px wide on desktop / 160 px on mobile.
+  ([aa3a7fc](https://github.com/makerelephant/textcreate-prototype/commit/aa3a7fc), [5a1790b](https://github.com/makerelephant/textcreate-prototype/commit/5a1790b))
+- **Favicon** wired up via Next.js's `metadata.icons` (sources `public/favicon.png`).
+  Browsers cache aggressively — hard refresh to see updates. ([879e76e](https://github.com/makerelephant/textcreate-prototype/commit/879e76e))
+- **Loosh mascot** (`public/loosh-worming copy.webm`) added behind the first
+  product tile. Wrapped tile structure (`.cp-tile-anchor`) so the mascot sits at
+  z-index 0 and the sibling tile at z-index 1 — the tile's white background cleanly
+  hides the bottom half of the mascot. (Previously placed inside the tile with
+  `z-index: -1`, which didn't work because the tile's entry animation creates its
+  own stacking context.)
+- **Mascot hidden on mobile** (`@media (max-width: 720px) { .cp-mascot { display: none } }`)
+  because iOS Safari does not support WebM with alpha channel — the video matte renders
+  as opaque black on iOS. Proper fix is providing a HEVC alpha `.mov` source as a
+  second `<source>` element; punted to a follow-up.
+
+### Custom domain
+- `create.madeinmotionapp.com` added at Wix (CNAME `create` → `cname.vercel-dns.com`)
+  and assigned to the Vercel project. `NEXT_PUBLIC_APP_URL` env var updated. New
+  collection links produced from this point onward use the custom domain. Old
+  `.vercel.app` URLs still work because Vercel keeps both alive.
+
+### Twilio diagnosis
+- Confirmed: `+1 989 864 2911` (US long code) is **blocked at the carrier layer
+  by US A2P 10DLC error 30034** for unregistered numbers. Pipeline correctly
+  generates the collection link and queues the TwiML reply — carriers (T-Mobile /
+  AT&T / Verizon) reject the outbound at network level regardless of how the
+  message was generated. **No code change can fix this** — A2P 10DLC registration
+  is the only path. (1-3 weeks process.)
+- Identified: signature validation was returning **403 Forbidden** to all Twilio
+  webhook calls. User worked around by setting `DISABLE_TWILIO_SIGNATURE_VALIDATION=true`
+  to unblock testing. Root cause not yet fixed — most likely the `TWILIO_AUTH_TOKEN`
+  in Vercel doesn't match the account, or there's a body-encoding mismatch. To
+  debug: log the computed validation URL alongside the failure, compare to what
+  Twilio actually called. **Re-enable signature validation before production.**
+- **WhatsApp Sandbox** confirmed working (replies with collection link in ~10 s).
+  Same `/api/twilio/inbound` endpoint handles both SMS and WhatsApp because Twilio
+  normalises the inbound webhook payload.
+
+---
+
+## For tomorrow — top items
+
+1. **Tighten the per-product image prompts** in `lib/mockup-gen.ts`. Today's prompts
+   produce wildly inconsistent results — sometimes the mascot/logo gets warped,
+   recoloured, or replaced by something the model invents. Important constraints
+   that need to be added/strengthened:
+   - **Never alter the user's submitted asset** — preserve colours, proportions,
+     orientation, and any text/logo exactly. The asset should be applied AS A PRINT,
+     not "interpreted".
+   - Tighten product descriptions so the model doesn't take liberties with the base
+     product (e.g. it sometimes invents a different garment colour or angle).
+   - Consider negative prompts ("do not modify the design", "do not add text",
+     "do not crop the design").
+2. **Fix the OpenAI vision analysis fallback** that's returning canned data on every
+   request (see "Open issues" → #4 above). The likely culprit is the `text.format`
+   shape for structured outputs being slightly wrong for the SDK version.
+3. **Mobile mascot transparency** — add an HEVC alpha `.mov` source so iOS Safari
+   gets a transparent video instead of falling back to the black-matte WebM. User
+   can convert via cloudconvert.com (output: MOV / H.265 / preserve alpha).
+4. **Re-enable Twilio signature validation** by debugging the 403. Auth token
+   re-copy + a logging tweak that prints the URL and computed signature. **Do this
+   before any non-test traffic.**
+5. **PII** — hash `from_phone` (sha256 + salt) before storage; mask in logs.
+   Schema migration to add `from_phone_hash` column.
+
+---
+
 ## Final commit list
 
 - [01e48c8](https://github.com/makerelephant/textcreate-prototype/commit/01e48c8) — Wire Supabase, sync pipeline, add structured outputs + Zod validation
@@ -218,3 +338,13 @@ If a column appears missing in production after a code change, ask the user to r
 - [f3e1962](https://github.com/makerelephant/textcreate-prototype/commit/f3e1962) — Promote share CTA to prominent full-width button
 - [520ae68](https://github.com/makerelephant/textcreate-prototype/commit/520ae68) — Resize share button to design system, ship medium quality mockups
 - [0bfa33c](https://github.com/makerelephant/textcreate-prototype/commit/0bfa33c) — Capitalize H in collection page title
+- [f66b731](https://github.com/makerelephant/textcreate-prototype/commit/f66b731) — Fix mockup race + drop generate fallback + client abort + changelog
+- [8de584f](https://github.com/makerelephant/textcreate-prototype/commit/8de584f) — Polling, dynamic ETA, layout reorder, copy + button updates
+- [f730d03](https://github.com/makerelephant/textcreate-prototype/commit/f730d03) — Add Loosh mascot peeking from behind first product tile
+- [3979fa6](https://github.com/makerelephant/textcreate-prototype/commit/3979fa6) — Fix stale-effect cancellation discarding mockup responses + low quality
+- [aa3a7fc](https://github.com/makerelephant/textcreate-prototype/commit/aa3a7fc) — Replace header logo with Made in Motion Create wordmark
+- [5a1790b](https://github.com/makerelephant/textcreate-prototype/commit/5a1790b) — Bump header logo: 300 px desktop / 160 px mobile
+- [879e76e](https://github.com/makerelephant/textcreate-prototype/commit/879e76e) — Wire favicon.png from public folder via metadata.icons
+- [0e99e04](https://github.com/makerelephant/textcreate-prototype/commit/0e99e04) — Mascot at 50% size, behind tile background (incomplete — fixed in next)
+- [916ea01](https://github.com/makerelephant/textcreate-prototype/commit/916ea01) — Resize learn-more link to design system, drop Products subhead
+- (this commit) — Header column layout, hug source-row, hide mascot on mobile, mascot wrapper for proper z-index

@@ -150,10 +150,8 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
 
       <div className="cp-content">
         <header className="cp-header">
-          <div>
-            <h1 className="cp-h1">Your Collection is Ready ✌️👇🏻</h1>
-            <p className="cp-sub">Our recommendations pair your asset with products we think visually fit while achieving the highest paired production quality.</p>
-          </div>
+          <h1 className="cp-h1">Your Collection is Ready ✌️👇🏻</h1>
+          <p className="cp-sub">Our recommendations pair your asset with products we think visually fit while achieving the highest paired production quality.</p>
           <button type="button" className="cp-btn-share" onClick={shareCollection}>
             <IconShare aria-hidden />
             <span>{shareLabel}</span>
@@ -165,19 +163,8 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
             {visibleProducts.map((product, i) => {
               const url = mockups[product.id];
               const state = stateFor(product.id);
-              return (
-                <article key={product.id} className="cp-tile" data-first={i === 0 ? "true" : undefined} style={{ animationDelay: `${i * 60}ms` }}>
-                  {i === 0 && (
-                    <video
-                      className="cp-mascot"
-                      src="/loosh-worming%20copy.webm"
-                      autoPlay
-                      muted
-                      loop
-                      playsInline
-                      aria-hidden
-                    />
-                  )}
+              const tile = (
+                <article className="cp-tile" style={{ animationDelay: `${i * 60}ms` }}>
                   <div
                     className="cp-preview"
                     style={url ? { backgroundImage: `url(${url})` } : undefined}
@@ -204,6 +191,22 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
                     <span className="cp-chip" data-status={state}>{STATUS_LABEL[state]}</span>
                   </div>
                 </article>
+              );
+              return (
+                <div key={product.id} className="cp-tile-anchor">
+                  {i === 0 && (
+                    <video
+                      className="cp-mascot"
+                      src="/loosh-worming%20copy.webm"
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      aria-hidden
+                    />
+                  )}
+                  {tile}
+                </div>
               );
             })}
           </section>

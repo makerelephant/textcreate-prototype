@@ -79,10 +79,9 @@
 
 .cp-header {
   display: flex;
+  flex-direction: column;
   align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
+  gap: 12px;
 }
 .cp-h1 {
   font-size: 28px;
@@ -126,16 +125,18 @@
   box-shadow: 0 0 0 3px rgba(40, 155, 255, 0.25);
 }
 
-/* Source design row */
+/* Source design row — hugs its content rather than stretching full width */
 .cp-source-row {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 16px;
-  padding: 16px;
+  gap: 12px;
+  padding: 8px 12px;
   background: #fff;
   border: 1px solid #EAECF0;
   border-radius: 12px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.04);
+  align-self: flex-start;
+  max-width: 100%;
 }
 .cp-source-img {
   width: 80px;
@@ -280,32 +281,34 @@
   gap: 16px;
 }
 
+/* Wrapper around each tile so the mascot can sit OUTSIDE the tile's
+   stacking context but inside a positioning anchor. The wrapper itself
+   has no z-index, so its children can be ordered freely against each other. */
+.cp-tile-anchor {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Mascot — peeks out from behind the top-right of the first tile.
-   z-index: -1 places it behind the tile's white background AND behind the
-   image preview, so only the portion that extends above the tile body is
-   visible. (Requires the tile to NOT create a stacking context.) */
+   Sits at z-index: 0 in the wrapper; the sibling .cp-tile is at z-index: 1
+   so its white background covers the bottom half of the mascot cleanly. */
 .cp-mascot {
   position: absolute;
-  bottom: calc(100% - 35px); /* 35 px overlap with the tile (hidden), 35 px sticks up */
+  top: -35px;       /* 35 px sticks above the tile (visible) */
   right: 8px;
   width: 70px;
   height: 70px;
   object-fit: contain;
-  z-index: -1;
+  z-index: 0;
   pointer-events: none;
   user-select: none;
-}
-@media (max-width: 720px) {
-  .cp-mascot {
-    width: 50px;
-    height: 50px;
-    bottom: calc(100% - 25px);
-  }
 }
 
 /* Tile */
 .cp-tile {
   position: relative;
+  z-index: 1;
   background: #fff;
   border: 1px solid #EAECF0;
   border-radius: 12px;
@@ -413,8 +416,6 @@
   .cp-h1 { font-size: 22px; }
   .cp-motif { width: 90vw; }
   .cp-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
-  .cp-source-row { flex-direction: row; align-items: flex-start; }
   .cp-source-img { width: 64px; height: 64px; }
-  .cp-header { flex-direction: column; align-items: stretch; }
-  .cp-header > div:first-child { min-width: 0; }
+  .cp-mascot { display: none; }
 }
