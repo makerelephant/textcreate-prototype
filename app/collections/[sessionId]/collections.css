@@ -244,19 +244,18 @@
 .cp-learn-more {
   display: inline-flex;
   align-items: center;
-  gap: 12px;
-  font-size: 22px;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
   color: #289BFF;
   text-decoration: none;
   cursor: pointer;
   align-self: flex-start;
-  transition: color 180ms ease, transform 180ms ease;
+  transition: color 180ms ease;
 }
 .cp-learn-more svg {
-  width: 24px;
-  height: 24px;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
   transition: transform 180ms ease;
 }
@@ -264,17 +263,7 @@
   color: #1873DE;
 }
 .cp-learn-more:hover svg {
-  transform: translateX(4px);
-}
-@media (max-width: 720px) {
-  .cp-learn-more {
-    font-size: 17px;
-    gap: 8px;
-  }
-  .cp-learn-more svg {
-    width: 18px;
-    height: 18px;
-  }
+  transform: translateX(3px);
 }
 
 /* Grid */

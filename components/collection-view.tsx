@@ -161,7 +161,6 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
         </header>
 
         <div>
-          <h2 className="cp-section-title">Products</h2>
           <section className="cp-grid" aria-label="Product mockups">
             {visibleProducts.map((product, i) => {
               const url = mockups[product.id];
