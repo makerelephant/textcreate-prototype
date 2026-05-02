@@ -1,21 +1,68 @@
 import OpenAI from "openai";
 import { logWarn } from "./logger";
 
-// Per-product mockup prompts. The user's design is passed as the input image
-// to images.edit, and the prompt instructs the model to compose it onto the product.
+// ============================================================================
+// ASSET PRESERVATION RULES — prepended to EVERY product prompt.
+// ============================================================================
+// Why this is so forceful: gpt-image-1 by default "interprets" the input image.
+// It redraws logos, stylises brand marks, alters faces, recomposes photos, and
+// generally treats the input as a creative starting point. For a print-on-
+// demand product this is a complete dealbreaker — customers expect their
+// photo / logo printed EXACTLY as submitted. Treat the design as immutable.
+//
+// IMPORTANT — this prompt-only approach is a best-effort guardrail. The model
+// will still occasionally drift. The only way to GUARANTEE pixel-perfect
+// preservation is a deterministic compositor (overlay PNG on a pre-rendered
+// blank product photo, no AI in the loop). That is tracked as a follow-up.
+const ASSET_PRESERVATION_RULES = `ABSOLUTE RULE — read carefully and obey on every output:
+
+The provided image is a CUSTOMER ASSET — a logo, brand mark, photograph, artwork, or design — submitted for direct print on a physical product. You MUST treat it as an immutable, unalterable raster. The customer expects the print to look IDENTICAL to what they uploaded.
+
+YOU MUST NOT:
+- redraw, redesign, reinterpret, restyle, illustrate, or recreate the design
+- modify any colours, gradients, lines, shapes, edges, characters, letters, words, numbers, faces, eyes, mouths, expressions, skin tones, hair, clothing, backgrounds, textures, or composition WITHIN the design
+- crop, mask, mirror, rotate, or replace any part of the design
+- add any element (text, watermark, decoration, signature, frame) to the design
+- remove any element from the design
+- "improve", "stylise", "embroider", "render in fabric thread", "render in stitches", or otherwise interpret the design — apply it as a flat printed graphic only
+- alter faces, photographs, brand marks, or text in ANY way — these are sacred and must be reproduced pixel-for-pixel from the source
+
+THE ONLY TRANSFORMATIONS PERMITTED ARE:
+- proportional scaling of the WHOLE design to fit the print area
+- realistic perspective consistent with the product surface (e.g. flat for a t-shirt face, cylindrical projection for a mug body, gentle curvature for a cap front panel)
+- a thin natural fabric / material texture overlay so the print looks physically applied to the product surface
+
+If you cannot apply the design without altering its content, return a clean product mockup WITHOUT the design rather than a modified version of the design.
+
+`;
+
+// Per-product mockup prompts. Each starts with ASSET_PRESERVATION_RULES, then
+// describes the product and the placement rules. Product descriptions are kept
+// neutral so the model doesn't take liberties with garment colour or angle.
 const PRODUCT_PROMPTS: Record<string, string> = {
-  tshirt:
-    "Photorealistic product mockup of a heather gray cotton t-shirt laid flat on a soft neutral background, with the provided design printed centered on the chest area. Soft natural studio lighting, premium product photography style, fabric texture and stitching detail visible.",
-  hoodie:
-    "Photorealistic product mockup of a black pullover hoodie laid flat on a soft neutral background, with the provided design printed across the chest. Studio lighting, premium product photography style, fleece texture visible, kangaroo pocket and drawstrings detail.",
-  mug:
-    "Photorealistic product mockup of a white ceramic 11oz coffee mug on a wooden surface, with the provided design wrapped around the visible front of the mug body. Soft natural lighting, premium product photography style, ceramic glaze and handle detail.",
-  tote:
-    "Photorealistic product mockup of a natural canvas tote bag standing upright against a soft neutral background, with the provided design printed centered on the front panel. Studio lighting, premium product photography, canvas weave and reinforced handle detail visible.",
-  towel:
-    "Photorealistic product mockup of a folded beach towel resting on light sand, with the provided design printed across the visible folded section. Bright natural daylight, premium product photography style, soft microfiber texture visible.",
-  cap:
-    "Photorealistic product mockup of a black structured baseball cap on a soft neutral background, with the provided design embroidered on the front center panel. Studio lighting, premium product photography style, fabric weave and curved brim detail visible.",
+  tshirt: `${ASSET_PRESERVATION_RULES}PRODUCT: heather grey cotton t-shirt, laid flat on a soft neutral background. Soft natural studio lighting, premium product photography style, fabric texture and stitching visible.
+
+PRINT PLACEMENT: place the entire design on the chest area at a natural graphic size, centred horizontally, top edge approximately four inches below the collar. The design itself must remain unchanged — only fabric-weave overlay and natural drape perspective are allowed.`,
+
+  hoodie: `${ASSET_PRESERVATION_RULES}PRODUCT: black pullover hoodie with kangaroo pocket and drawstrings, laid flat on a soft neutral background. Studio lighting, premium product photography style, fleece texture visible.
+
+PRINT PLACEMENT: place the entire design on the chest area, centred horizontally above the kangaroo pocket. The design itself must remain unchanged — only fabric texture overlay and natural drape are allowed.`,
+
+  mug: `${ASSET_PRESERVATION_RULES}PRODUCT: white ceramic 11oz coffee mug with handle on the right, sitting on a wooden surface, viewed from the front. Soft natural lighting, premium product photography style, ceramic glaze visible.
+
+PRINT PLACEMENT: apply the entire design to the visible front face of the mug body, centred. The design itself must remain unchanged — the ONLY additional transformation permitted is the cylindrical surface projection required to wrap a flat image around a cylinder. Scale the design DOWN if necessary so the entire design remains visible on the curved surface; never crop it.`,
+
+  tote: `${ASSET_PRESERVATION_RULES}PRODUCT: natural canvas tote bag with two leather handles, standing upright against a soft neutral background. Studio lighting, premium product photography style, canvas weave visible.
+
+PRINT PLACEMENT: place the entire design centred on the front panel of the tote at a natural graphic size. The design itself must remain unchanged — only canvas-weave texture overlay is allowed.`,
+
+  towel: `${ASSET_PRESERVATION_RULES}PRODUCT: folded beach towel resting on light sand, viewed from above-front. Bright natural daylight, premium product photography style, soft microfiber texture visible.
+
+PRINT PLACEMENT: place the entire design centred on the visible folded top section of the towel. The design itself must remain unchanged — only soft microfiber texture overlay is allowed.`,
+
+  cap: `${ASSET_PRESERVATION_RULES}PRODUCT: black structured 6-panel baseball cap with a curved brim, viewed from the front. Studio lighting, premium product photography style, fabric weave and stitching visible.
+
+PRINT PLACEMENT: apply the entire design as a FLAT PRINTED GRAPHIC on the front centre panel of the cap, at a natural size for cap branding. DO NOT render the design as embroidery, stitching, or thread — treat it as a heat-transfer or sublimation print. The design itself must remain unchanged — the ONLY additional transformation permitted is the gentle curve of the cap front panel.`,
 };
 
 export type MockupResult = {
