@@ -138,7 +138,7 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
       </div>
 
       <div className="cp-content">
-        <img className="cp-brand" src="/Made%20in%20Motion%20Create.png" alt="Made in Motion Create" />
+        <img className="cp-brand" src="/Made%20in%20Motion%20Create.png?v=2" alt="Made in Motion Create" />
 
         <header className="cp-header">
           <h1 className="cp-h1">Your Collection is Ready ✌️👇🏻</h1>
