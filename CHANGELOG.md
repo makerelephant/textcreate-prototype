@@ -364,6 +364,87 @@ If a column appears missing in production after a code change, ask the user to r
 
 ---
 
+## Day 3 (2026-05-02) — Asset preservation prompts + sequential generation
+
+### Critical product rule landed
+Per user feedback, gpt-image-1 was taking creative license with the
+customer's submitted asset — redrawing logos, altering faces, restyling
+brand marks. For a print-on-demand product this is a complete dealbreaker.
+Customers expect their upload printed pixel-for-pixel.
+
+- New `ASSET_RULES` block prepended to every product prompt in
+  `lib/mockup-gen.ts`. Forbids redraw / restyle / recolour / recrop /
+  mirror / rotate / add / remove / embroider / thread interpretation.
+  Specifies that the ONLY permitted transformations are proportional
+  scaling, realistic surface perspective, and light material texture.
+  Faces, text, brand marks must be pixel-for-pixel from the source.
+- **First attempt** was a much longer / more verbose version (~1100 chars
+  of rules), which caused 4 of 6 products to fail to render entirely —
+  `gpt-image-1`'s `images.edit` appears to hit a reliability cliff with
+  long prompts. Condensed to ~500 chars; same constraints, single
+  expression each.
+- **Removed the escape hatch** ("if you cannot apply without altering,
+  return without the design") that the first version included. Was
+  giving the model permission to bail; now it must try.
+- Server-side OpenAI timeout bumped 60 s → 75 s as a small reliability
+  buffer.
+- New review doc `prompts/mockup-prompts.md` — full text of every prompt
+  per product, plus a "what to watch for in real outputs" checklist.
+  This is review-only; source of truth stays in `lib/mockup-gen.ts`.
+
+### Sequential mockup generation (the fix that worked)
+Even after condensing the prompts, only 2 of 6 mockups consistently
+rendered when client fired requests in parallel. Pattern (one product
+from each batch wins, others fail) strongly suggested OpenAI
+concurrency / rate-limit on the user's API key.
+
+- Client `useEffect` in `components/collection-view.tsx` rewritten to
+  process the trigger queue **one at a time** (await each fetch before
+  starting the next). `processingRef` guards against the effect
+  re-running mid-queue and overlapping batches.
+- Trade-off: slower (tiles fill in over ~75-150 s instead of all spinning
+  in parallel) but reliably renders all 6.
+- Each tile's trigger time is set when its fetch actually starts so
+  the per-tile ETA reflects real elapsed time, not queue wait.
+- Confirmed live: all 6 render after this change.
+
+### Logo + cache-bust
+- New header logo asset replaces the previous `Made in Motion Create.png`
+  in `public/`.
+- Image src updated to `/Made%20in%20Motion%20Create.png?v=2` —
+  browsers cache by URL and updating the file in place keeps the URL
+  the same, so mobile Safari (especially) was serving the stale bytes.
+  Bumping the `?v=` query whenever the file changes forces a refetch.
+
+---
+
+## Open follow-ups (carried into Day 4)
+
+1. **Deterministic compositor** — the only way to GUARANTEE 100 % asset
+   preservation. Overlay PNG on a pre-rendered blank product photo, no
+   AI. This is the right long-term fix; the prompt-based guardrail is
+   best-effort and will still occasionally drift.
+2. **Per-minute rate limiting** — if 6 sequential calls ever hit OpenAI's
+   per-minute cap, add either (a) a fixed 12 s gap between calls, or
+   (b) server-side 429 retry with exponential backoff, or (c) bump
+   the OpenAI tier.
+3. **Image-prompt iteration once we see real outputs** — watch for
+   logos redrawn, faces altered, text recharacterised, embroidery
+   sneaking back into the cap, mug crops. Each surfacing failure mode
+   gets its specific rule tightened.
+4. **Mobile mascot** — still hidden on mobile. To bring it back, provide
+   a HEVC alpha `.mov` source so iOS Safari has a transparent format
+   to fall back to.
+5. **OpenAI vision analysis fallback bug** (Day 1 open issue #4) — still
+   silently returning canned data; harmless today since nothing visible
+   in the UI consumes it, but worth fixing before any prompt logic
+   starts depending on the analysis.
+6. **PII** — hash `from_phone` before storage, mask in logs.
+7. **Re-enable Twilio signature validation** — currently disabled to
+   unblock testing. Must be re-enabled before any non-test traffic.
+
+---
+
 ## Final commit list
 
 - [01e48c8](https://github.com/makerelephant/textcreate-prototype/commit/01e48c8) — Wire Supabase, sync pipeline, add structured outputs + Zod validation
@@ -383,3 +464,10 @@ If a column appears missing in production after a code change, ask the user to r
 - [0e99e04](https://github.com/makerelephant/textcreate-prototype/commit/0e99e04) — Mascot at 50% size, behind tile background (incomplete — fixed in next)
 - [916ea01](https://github.com/makerelephant/textcreate-prototype/commit/916ea01) — Resize learn-more link to design system, drop Products subhead
 - [8ec0fbd](https://github.com/makerelephant/textcreate-prototype/commit/8ec0fbd) — Header column layout, hug source-row, hide mascot on mobile, mascot wrapper for proper z-index
+- [8b56e4b](https://github.com/makerelephant/textcreate-prototype/commit/8b56e4b) — Replace "(this commit)" placeholder in CHANGELOG with actual hash
+- [fd8afbf](https://github.com/makerelephant/textcreate-prototype/commit/fd8afbf) — UI cleanup: layout restructure, user-asset tile, footer group, copy + button updates
+- [a2e851c](https://github.com/makerelephant/textcreate-prototype/commit/a2e851c) — Update header logo asset
+- [150e331](https://github.com/makerelephant/textcreate-prototype/commit/150e331) — Cache-bust the header logo (?v=2) so mobile picks up the new asset
+- [5ca7edb](https://github.com/makerelephant/textcreate-prototype/commit/5ca7edb) — Lock down mockup prompts: never modify the user's submitted asset
+- [d6aec6d](https://github.com/makerelephant/textcreate-prototype/commit/d6aec6d) — Condense mockup prompts (4 of 6 products failed) and drop escape hatch
+- [94b7191](https://github.com/makerelephant/textcreate-prototype/commit/94b7191) — Generate mockups sequentially instead of in parallel
