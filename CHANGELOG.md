@@ -347,4 +347,4 @@ If a column appears missing in production after a code change, ask the user to r
 - [879e76e](https://github.com/makerelephant/textcreate-prototype/commit/879e76e) — Wire favicon.png from public folder via metadata.icons
 - [0e99e04](https://github.com/makerelephant/textcreate-prototype/commit/0e99e04) — Mascot at 50% size, behind tile background (incomplete — fixed in next)
 - [916ea01](https://github.com/makerelephant/textcreate-prototype/commit/916ea01) — Resize learn-more link to design system, drop Products subhead
-- (this commit) — Header column layout, hug source-row, hide mascot on mobile, mascot wrapper for proper z-index
+- [8ec0fbd](https://github.com/makerelephant/textcreate-prototype/commit/8ec0fbd) — Header column layout, hug source-row, hide mascot on mobile, mascot wrapper for proper z-index
