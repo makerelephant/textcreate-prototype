@@ -25,12 +25,6 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
   const unmountedRef = useRef(false);
   useEffect(() => () => { unmountedRef.current = true; }, []);
 
-  // Trigger generation for newly-visible products that haven't been started yet.
-  // NOTE: we deliberately do NOT use a per-effect `cancelled` flag here.
-  // The dep array re-runs this effect on every mockups update, and a
-  // per-effect flag would incorrectly discard responses from fetches that
-  // were started in an earlier run but completed after a re-render. Use
-  // unmountedRef (component-lifetime) instead — that only fires on true unmount.
   useEffect(() => {
     const visible = MOCKUP_PRODUCTS.slice(0, visibleCount);
     const toTrigger = visible.filter(
@@ -63,8 +57,6 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
     });
   }, [session.id, visibleCount, mockups]);
 
-  // Tick the clock every second so countdown ETAs re-render. Stops itself
-  // when no tile is still generating.
   useEffect(() => {
     const stillGenerating = MOCKUP_PRODUCTS.slice(0, visibleCount).some((p) =>
       !mockups[p.id] && !failed.has(p.id)
@@ -74,7 +66,6 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
     return () => clearInterval(id);
   }, [visibleCount, mockups, failed]);
 
-  // Poll the server for mockup updates — recovers from lost request responses.
   useEffect(() => {
     const stillGenerating = MOCKUP_PRODUCTS.slice(0, visibleCount).some((p) =>
       !mockups[p.id] && !failed.has(p.id)
@@ -138,27 +129,31 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
   };
 
   const visibleProducts = MOCKUP_PRODUCTS.slice(0, visibleCount);
-  const moreCount = Math.min(MOCKUP_PRODUCTS.length - visibleCount, BATCH_SIZE);
+  const moreCount = MOCKUP_PRODUCTS.length - visibleCount;
 
   return (
     <main className="cp-page" data-state="populated">
-      <img className="cp-brand" src="/Made%20in%20Motion%20Create.png" alt="Made in Motion Create" />
-
       <div className="cp-motif" aria-hidden="true">
         <img src="/assets/engine-background.png" alt="" />
       </div>
 
       <div className="cp-content">
+        <img className="cp-brand" src="/Made%20in%20Motion%20Create.png" alt="Made in Motion Create" />
+
         <header className="cp-header">
           <h1 className="cp-h1">Your Collection is Ready ✌️👇🏻</h1>
-          <p className="cp-sub">Our recommendations pair your asset with products we think visually fit while achieving the highest paired production quality.</p>
+          <p className="cp-sub">Our system pairs your asset with visually compatible products while optimizing for the highest production quality.</p>
           <button type="button" className="cp-btn-share" onClick={shareCollection}>
             <IconShare aria-hidden />
             <span>{shareLabel}</span>
           </button>
         </header>
 
-        <div>
+        <div className="cp-products-section">
+          <section className="cp-user-asset" aria-label="Your design">
+            <img src={session.source_image_url} alt="Your design" />
+          </section>
+
           <section className="cp-grid" aria-label="Product mockups">
             {visibleProducts.map((product, i) => {
               const url = mockups[product.id];
@@ -218,33 +213,21 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
                 className="cp-btn cp-btn-primary"
                 onClick={() => setVisibleCount((c) => c + BATCH_SIZE)}
               >
-                Spin up {moreCount} more…
+                <span>Show Me More Product Ideas</span>
+                <img src="/Refresh%20white.png" alt="" className="cp-btn-icon" />
               </button>
             </div>
           )}
         </div>
 
-        <section className="cp-source-row">
-          <img className="cp-source-img" src={session.source_image_url} alt="Your design" />
-          <div className="cp-source-text">
-            <a
-              className="cp-chip-btn"
-              href={session.source_image_url}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              View Your Design
-            </a>
-          </div>
-        </section>
-
-        <a className="cp-learn-more" href="#" onClick={(e) => e.preventDefault()}>
-          <span>Learn more about our product scoring model</span>
-          <IconArrowRight aria-hidden />
-        </a>
+        <div className="cp-footer-group">
+          <a className="cp-learn-more" href="#" onClick={(e) => e.preventDefault()}>
+            <span>Learn more about our product scoring model</span>
+            <IconArrowRight aria-hidden />
+          </a>
+          <div className="cp-footer">© 2026 Made In Motion PBC</div>
+        </div>
       </div>
-
-      <footer className="cp-footer">© 2026 Made In Motion PBC</footer>
     </main>
   );
 }

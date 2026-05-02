@@ -7,7 +7,6 @@ Handoff document for the next agent. Captures everything done today, the current
 ## Context for the next agent
 
 - **User:** Mark Slater (`ms@elephdigital.com`). Works in **production only** — does not use terminal commands. Walk through web UIs (Vercel dashboard, Supabase dashboard, Twilio console, Wix DNS) click-by-click.
-- **Demo pressure:** the user had a team demo this morning. Today's work was urgent and pragmatic — ship usable end-to-end behavior, not perfect code.
 - **Repo:** [github.com/makerelephant/textcreate-prototype](https://github.com/makerelephant/textcreate-prototype) (`main` branch auto-deploys to Vercel; user has had to manually **Promote to Production** in Vercel because some redeploys land as Preview)
 - **Vercel project:** `textcreate-prototype` (account: mark-slaters-projects-f5bed7db)
 - **Custom domain:** `create.madeinmotionapp.com` — DNS at Wix (CNAME to `cname.vercel-dns.com`). Working as of last check.
@@ -90,7 +89,7 @@ The original prototype (described in `prototype_debug_report.md`) was end-to-end
 - Pipeline confirmed working end-to-end via `/demo` page — session created in Supabase, source image uploaded to Storage, mockups generated and persisted.
 - New design rendering correctly with brand mark, motif, tiles, mobile responsive.
 - Hero generation endpoint exists but is no longer auto-triggered by the collection page (mockup grid replaced it visually).
-- WhatsApp Sandbox webhook has been configured by the user but **is not responding with a collection link as of the time of writing** — see Open Issues below.
+- WhatsApp Sandbox webhook has been configured and is working,
 
 ---
 
@@ -109,6 +108,7 @@ The original prototype (described in `prototype_debug_report.md`) was end-to-end
 | `TWILIO_AUTH_TOKEN` | (their token) | Set |
 | `TWILIO_PHONE_NUMBER` | `+19898642911` | US long code, NOT A2P-registered |
 | `PUBLIC_WEBHOOK_BASE_URL` | (unset — falls back to `NEXT_PUBLIC_APP_URL`) | Important for signature validation |
+| `DISABLE_TWILIO_SIGNATURE_VALIDATION` | `true` | TEMPORARY — set to unblock testing after the webhook returned 403. Re-enable signature validation (set to `false` or remove) before any non-test traffic. |
 
 **Note:** the user previously set `OPENAI_IMAGE_MODEL=image 2` (with a space, invalid value) trying to use a hypothetical "gpt-image-2". That broke all mockups until the value was cleared. If you see mockups failing across the board, check this env var first.
 
@@ -128,19 +128,11 @@ If a column appears missing in production after a code change, ask the user to r
 
 ## Open issues
 
-### 1. WhatsApp Sandbox not delivering collection link (active)
-- Configured webhook URL: should be `https://create.madeinmotionapp.com/api/twilio/inbound` (POST). Verify in **Twilio Console → Messaging → Try it out → Send a WhatsApp message → Sandbox settings**.
-- User has joined the sandbox at least once.
-- **Diagnosis pending.** Most likely causes:
-  - Webhook URL still points to the old `.vercel.app` domain → signature validation fails (3-403) because `PUBLIC_WEBHOOK_BASE_URL` is unset and falls back to `NEXT_PUBLIC_APP_URL = https://create.madeinmotionapp.com`. Twilio computes signature against the URL it actually called; if those mismatch → silent 403.
-  - User sent SMS instead of WhatsApp message (sandbox number ignores SMS).
-  - User sent text-only (no media) → our route returns "Send a photo and I'll turn it into a visual collection." which would be delivered.
-- **Next step:** ask user for **Twilio Console → Monitor → Logs → Messaging Logs** entry from the failed attempt. The Request Inspector shows the exact URL Twilio called, the response code, and the body we returned. That tells you whether (a) we 403'd, (b) we 200'd with TwiML, or (c) we never got the call.
-
-### 2. SMS path is blocked at the carrier level (long-standing)
+### 1. SMS path is blocked at the carrier level (long-standing)
 - Twilio number `+1 989 864 2911` returned error **30034: "US A2P 10DLC - Message from an Unregistered Number"** when attempting to deliver an outbound message. The collection link IS generated correctly server-side (visible in Twilio Body field) — carriers just block delivery.
 - Even TwiML auto-replies are blocked from unregistered US long codes.
 - **Fix paths:** A2P 10DLC registration (1-3 weeks), toll-free number + verification (2-4 weeks), WhatsApp Sandbox (immediate, in progress), graduate to paid WhatsApp Business sender (1-2 days).
+- No action required. User is waiting on approval of campaigns before migrating from whatsapp to the numbers.
 
 ### 3. Mockup composition quality varies
 - `gpt-image-1` `images.edit` does its best to composite the user's design onto each product, but quality is inconsistent — placement can be off, design can be warped, sometimes the design vanishes entirely and you get a generic product photo.
@@ -201,11 +193,10 @@ If a column appears missing in production after a code change, ask the user to r
 
 ## What I'd do next (if I were the next agent)
 
-1. **Diagnose WhatsApp** — get the user to paste a screenshot of Twilio Messaging Logs from a failed attempt. That's the fastest way to see whether the webhook fired at all.
-2. **Fix the OpenAI analysis fallback bug** — print the actual error from the log warns. It's almost certainly a `text.format` shape issue with the structured outputs API.
-3. **Iterate on mockup prompts** — once you have a few real test results, the prompts in `lib/mockup-gen.ts` will tell you which products need tweaking. T-shirt and hoodie tend to work best with `gpt-image-1`; mug and beach towel need more guidance about how the design wraps.
-4. **PII hashing** before any external user testing (TCPA exposure).
-5. **Don't suggest gpt-image-2** unless you've verified it exists in the OpenAI catalog as of your knowledge cutoff. Today's user explicitly asked for it; OpenAI's docs as of Jan 2026 only listed `gpt-image-1`. The model is env-driven (`OPENAI_IMAGE_MODEL`) so swapping is one env-var change, no code.
+1. **Fix the OpenAI analysis fallback bug** — print the actual error from the log warns. It's almost certainly a `text.format` shape issue with the structured outputs API.
+2. **Iterate on mockup prompts** — once you have a few real test results, the prompts in `lib/mockup-gen.ts` will tell you which products need tweaking. T-shirt and hoodie tend to work best with `gpt-image-1`; mug and beach towel need more guidance about how the design wraps.
+3. **PII hashing** before any external user testing (TCPA exposure).
+4. **Don't suggest gpt-image-2** unless you've verified it exists in the OpenAI catalog as of your knowledge cutoff. Today's user explicitly asked for it; OpenAI's docs as of Jan 2026 only listed `gpt-image-1`. The model is env-driven (`OPENAI_IMAGE_MODEL`) so swapping is one env-var change, no code.
 
 ---
 
@@ -318,14 +309,58 @@ If a column appears missing in production after a code change, ask the user to r
 2. **Fix the OpenAI vision analysis fallback** that's returning canned data on every
    request (see "Open issues" → #4 above). The likely culprit is the `text.format`
    shape for structured outputs being slightly wrong for the SDK version.
-3. **Mobile mascot transparency** — add an HEVC alpha `.mov` source so iOS Safari
-   gets a transparent video instead of falling back to the black-matte WebM. User
-   can convert via cloudconvert.com (output: MOV / H.265 / preserve alpha).
 4. **Re-enable Twilio signature validation** by debugging the 403. Auth token
    re-copy + a logging tweak that prints the URL and computed signature. **Do this
    before any non-test traffic.**
 5. **PII** — hash `from_phone` (sha256 + salt) before storage; mask in logs.
    Schema migration to add `from_phone_hash` column.
+
+---
+
+## Day 2 (2026-05-01) — UI cleanup before image-prompt work
+
+### Layout restructure
+- **Brand mark moved out of absolute positioning** into the content flow as
+  `cp-content`'s first child. Spacing to the title is now governed by a clean
+  `margin-bottom: 24 px` instead of fragile padding-top math against the logo's
+  variable height. Same effect on mobile.
+- **Mobile logo bumped from 160 px → 240 px wide** per the design.
+- **`cp-content` padding reduced** from `132 56 24` to `36 56 36` (and `24 24 24`
+  on mobile) since the brand no longer needs dedicated reserved space at the top.
+- **`cp-content` flex gap reduced** from 32 px to 24 px so the major content
+  blocks (brand → header → products section → footer group) sit at the same
+  rhythm.
+
+### New "products section" structure
+- Wrapped the user-asset tile, products grid, and Spin-up row in a single
+  `cp-products-section` flex column with a 12 px gap. This lets us put the
+  user asset tile **12 px above the first product tile** while keeping the
+  24 px gap between the products section and the surrounding blocks.
+- **New `.cp-user-asset` mint tile** — 80 × 80 px, `#EDFFF9` background,
+  `#D6F1E3` border, holds the user's submitted design fitted with `object-fit:
+  contain`. Left-justified to the first product tile. No label text (per design).
+- **Removed the old `.cp-source-row` card** (the "View Your Design" white card
+  that previously sat below the products grid). The tile above the grid replaces
+  it.
+
+### Footer group
+- New `cp-footer-group` wraps the "Learn more about our product scoring model"
+  link and the "© 2026 Made In Motion PBC" copyright with a 24 px vertical gap
+  between them. Footer is no longer absolute-positioned at the bottom of the
+  viewport — it sits at the natural end of the content flow with a 24 px
+  margin-top above the group.
+
+### Copy + button updates
+- **Subtitle** changed to *"Our system pairs your asset with visually compatible
+  products while optimizing for the highest production quality."*
+- **Spin-up button** label changed to *"Show Me More Product Ideas"* (no longer
+  shows the dynamic remaining count) and now includes the `Refresh white.png`
+  icon from `public/` after the label. New `cp-btn-icon` class sets it to 16 px.
+
+### Env vars
+- Added `DISABLE_TWILIO_SIGNATURE_VALIDATION=true` to the documented env vars
+  table — temporary unblock for the webhook 403, must be removed before
+  production traffic.
 
 ---
 
