@@ -23,38 +23,58 @@ export default function CollectionView({ session, shareUrl }: { session: Collect
   const triggeredRef = useRef<Set<string>>(new Set(Object.keys(initialMockups)));
   const triggerTimesRef = useRef<Record<string, number>>({});
   const unmountedRef = useRef(false);
+  const processingRef = useRef(false);
   useEffect(() => () => { unmountedRef.current = true; }, []);
 
+  // Generation runs SEQUENTIALLY (one fetch at a time), not in parallel.
+  // Parallel was causing 4 of 6 mockups to fail consistently — almost certainly
+  // OpenAI concurrency / rate-limit on the user's API key. Trade-off: slower
+  // (user sees tiles fill in one by one over ~75-150 s for 3 tiles) but
+  // reliable.
   useEffect(() => {
+    if (processingRef.current) return;
+
     const visible = MOCKUP_PRODUCTS.slice(0, visibleCount);
     const toTrigger = visible.filter(
       (p) => !mockups[p.id] && !triggeredRef.current.has(p.id)
     );
     if (toTrigger.length === 0) return;
 
-    toTrigger.forEach(async (product) => {
-      triggeredRef.current.add(product.id);
-      triggerTimesRef.current[product.id] = Date.now();
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
+    // Mark all as triggered up-front so React re-renders don't re-queue them.
+    // triggerTimes is set inside the loop when each fetch actually starts,
+    // so the per-tile ETA reflects real elapsed time, not queue wait time.
+    toTrigger.forEach((p) => triggeredRef.current.add(p.id));
+    processingRef.current = true;
+
+    (async () => {
       try {
-        const res = await fetch(`/api/sessions/${session.id}/mockups/${product.id}`, {
-          method: "POST",
-          signal: controller.signal,
-        });
-        const data = await res.json();
-        if (unmountedRef.current) return;
-        if (data.ok && data.mockupUrl) {
-          setMockups((prev) => ({ ...prev, [product.id]: data.mockupUrl }));
-        } else {
-          setFailed((prev) => new Set(prev).add(product.id));
+        for (const product of toTrigger) {
+          if (unmountedRef.current) return;
+          triggerTimesRef.current[product.id] = Date.now();
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), CLIENT_TIMEOUT_MS);
+          try {
+            const res = await fetch(`/api/sessions/${session.id}/mockups/${product.id}`, {
+              method: "POST",
+              signal: controller.signal,
+            });
+            const data = await res.json();
+            if (unmountedRef.current) return;
+            if (data.ok && data.mockupUrl) {
+              setMockups((prev) => ({ ...prev, [product.id]: data.mockupUrl }));
+            } else {
+              setFailed((prev) => new Set(prev).add(product.id));
+            }
+          } catch {
+            // Polling will recover the URL if the mockup did persist server-side.
+          } finally {
+            clearTimeout(timeout);
+          }
         }
-      } catch {
-        // Polling will recover the URL if it did persist server-side.
       } finally {
-        clearTimeout(timeout);
+        processingRef.current = false;
       }
-    });
+    })();
   }, [session.id, visibleCount, mockups]);
 
   useEffect(() => {
